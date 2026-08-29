@@ -9,7 +9,7 @@ const brailleFormatSchema = z
   .enum(["unicode", "ascii"])
   .default("unicode")
   .describe(
-    "點字格式，支援 unicode 或 ascii (Braille format: unicode or ascii)"
+    "點字格式，支援 unicode 或 ascii (Braille format: unicode or ascii)",
   );
 
 type BrailleFormat = z.infer<typeof brailleFormatSchema>;
@@ -20,7 +20,7 @@ const toBrailleType = (format: BrailleFormat): BrailleType =>
 export const convertBrailleToTextWithFormat = (
   service: Service,
   braille: string,
-  format: BrailleFormat = "unicode"
+  format: BrailleFormat = "unicode",
 ): string =>
   format === "ascii"
     ? service.convertAsciiBrailleToText(braille)
@@ -29,7 +29,7 @@ export const convertBrailleToTextWithFormat = (
 export const convertTextToBrailleWithFormat = (
   service: Service,
   text: string,
-  format: BrailleFormat = "unicode"
+  format: BrailleFormat = "unicode",
 ): string =>
   format === "ascii"
     ? service.convertTextToAsciiBraille(text)
@@ -37,45 +37,45 @@ export const convertTextToBrailleWithFormat = (
 
 export const convertBpmfToBrailleWithFormat = (
   bpmf: string,
-  format: BrailleFormat = "unicode"
+  format: BrailleFormat = "unicode",
 ): string =>
   BopomofoBrailleConverter.convertBpmfToBraille(bpmf, toBrailleType(format));
 
 export const convertBrailleToBpmfWithFormat = (
   braille: string,
-  format: BrailleFormat = "unicode"
+  format: BrailleFormat = "unicode",
 ): string =>
   BopomofoBrailleConverter.convertBrailleToBpmf(braille, toBrailleType(format));
 
 export const convertBpmfToTextForMcp = (
   service: Service,
-  bpmf: string
+  bpmf: string,
 ): string => service.convertBpmfToText(bpmf);
 
 export const convertTextToBpmfReadingsForMcp = (
   service: Service,
-  text: string
+  text: string,
 ): string => service.convertTextToBpmfReadings(text);
 
 export const convertTextToBpmfReadingsWithSpacesForMcp = (
   service: Service,
-  text: string
+  text: string,
 ): string => service.convertTextToBpmfReadingsWithSpaces(text);
 
 export const convertTextToPinyinForMcp = (
   service: Service,
-  text: string
+  text: string,
 ): string => service.convertTextToPinyin(text);
 
 export const convertTextToBpmfAnnotatedTextForMcp = (
   service: Service,
-  text: string
+  text: string,
 ): string => service.convertTextToBpmfAnnotatedText(text);
 
 export const annotateSingleCharacterForMcp = (
   service: Service,
   text: string,
-  reading: string
+  reading: string,
 ): string => service.annotateSingleCharacter(text, reading);
 
 async function runServerTransport() {
@@ -84,7 +84,7 @@ async function runServerTransport() {
   const server = new McpServer({
     name: "mcp-mcbopomofo",
     title: "McBopomofo",
-    version: "2.0.5",
+    version: "2.1.0",
   });
 
   server.registerTool(
@@ -110,7 +110,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertTextToBraille",
@@ -132,7 +132,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertBpmfToBraille",
@@ -143,7 +143,7 @@ async function runServerTransport() {
         bpmf: z
           .string()
           .describe(
-            "包含注音 、數字或英文的字串 (Text content), 例如: ㄗㄠˇㄐㄧㄡˋ"
+            "包含注音 、數字或英文的字串 (Text content), 例如: ㄗㄠˇㄐㄧㄡˋ",
           ),
         format: brailleFormatSchema,
       },
@@ -159,7 +159,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertBpmfToText",
@@ -170,7 +170,7 @@ async function runServerTransport() {
         bpmf: z
           .string()
           .describe(
-            "連續或以空白分隔的注音字串 (Bopomofo string), 例如: ㄓㄨㄥㄨㄣˊ"
+            "連續或以空白分隔的注音字串 (Bopomofo string), 例如: ㄓㄨㄥㄨㄣˊ",
           ),
       },
     },
@@ -185,7 +185,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertBrailleToBpmf",
@@ -209,7 +209,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertTextToBpmfReadings",
@@ -232,7 +232,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertTextToBpmfReadingsWithSpaces",
@@ -255,7 +255,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertTextToPinyin",
@@ -278,7 +278,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "convertTextToBpmfAnnotatedText",
@@ -302,7 +302,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
   server.registerTool(
     "annotateSingleCharacter",
@@ -325,7 +325,7 @@ async function runServerTransport() {
           },
         ],
       };
-    }
+    },
   );
 
   await server.connect(new StdioServerTransport());

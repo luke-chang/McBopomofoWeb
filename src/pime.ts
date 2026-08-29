@@ -197,7 +197,7 @@ class PimeMcBopomofo {
     this.inputController.setOnExcludedPhraseChange(
       (map: Map<string, string[]>) => {
         this.writeExcludedPhrases(map);
-      }
+      },
     );
     this.inputController.setOnError(() => {
       if (this.settings.beep_on_error) {
@@ -234,31 +234,31 @@ class PimeMcBopomofo {
   /** The path to the PIME user data folder. */
   readonly pimeUserDataPath: string = path.join(
     process.env.APPDATA || "",
-    "PIME"
+    "PIME",
   );
 
   /** The path to the McBopomofo user data folder. */
   readonly mcBopomofoUserDataPath: string = path.join(
     this.pimeUserDataPath,
-    "mcbopomofo"
+    "mcbopomofo",
   );
 
   /** The path to the user phrases file. */
   readonly userPhrasesPath: string = path.join(
     this.mcBopomofoUserDataPath,
-    "data.txt"
+    "data.txt",
   );
 
   /** The path to the excluded phrases file. */
   readonly excludedPhrasesPath: string = path.join(
     this.mcBopomofoUserDataPath,
-    "exclude-phrases.txt"
+    "exclude-phrases.txt",
   );
 
   /** The path to the user settings file. */
   readonly userSettingsPath: string = path.join(
     this.mcBopomofoUserDataPath,
-    "config.json"
+    "config.json",
   );
 
   /** Loads user phrases from disk. */
@@ -266,7 +266,7 @@ class PimeMcBopomofo {
     fs.readFile(this.userPhrasesPath, (err, data) => {
       if (err) {
         console.error(
-          "Unable to read user phrases from " + this.userPhrasesPath
+          "Unable to read user phrases from " + this.userPhrasesPath,
         );
         return;
       }
@@ -281,7 +281,7 @@ class PimeMcBopomofo {
     fs.readFile(this.excludedPhrasesPath, (err, data) => {
       if (err) {
         console.error(
-          "Unable to read excluded phrases from " + this.excludedPhrasesPath
+          "Unable to read excluded phrases from " + this.excludedPhrasesPath,
         );
         return;
       }
@@ -297,7 +297,7 @@ class PimeMcBopomofo {
   private writeUserPhrases(map: Map<string, string[]>): void {
     if (!fs.existsSync(this.mcBopomofoUserDataPath)) {
       console.log(
-        "User data folder not found, creating " + this.mcBopomofoUserDataPath
+        "User data folder not found, creating " + this.mcBopomofoUserDataPath,
       );
       console.log("Creating one");
       fs.mkdirSync(this.mcBopomofoUserDataPath);
@@ -326,7 +326,7 @@ class PimeMcBopomofo {
   private writeExcludedPhrases(map: Map<string, string[]>): void {
     if (!fs.existsSync(this.mcBopomofoUserDataPath)) {
       console.log(
-        "User data folder not found, creating " + this.mcBopomofoUserDataPath
+        "User data folder not found, creating " + this.mcBopomofoUserDataPath,
       );
       console.log("Creating one");
       fs.mkdirSync(this.mcBopomofoUserDataPath);
@@ -367,28 +367,28 @@ class PimeMcBopomofo {
     this.inputController.setSelectPhrase(this.settings.select_phrase);
     this.inputController.setCandidateKeys(this.settings.candidate_keys);
     this.inputController.setCandidateKeysCount(
-      this.settings.candidate_keys_count
+      this.settings.candidate_keys_count,
     );
     this.inputController.setChineseConversionEnabled(
-      this.settings.chineseConversion
+      this.settings.chineseConversion,
     );
     this.inputController.setEscClearEntireBuffer(
-      this.settings.esc_key_clear_entire_buffer
+      this.settings.esc_key_clear_entire_buffer,
     );
     this.inputController.setMoveCursorAfterSelection(this.settings.move_cursor);
     this.inputController.setLetterMode(this.settings.letter_mode);
     this.inputController.setHalfWidthPunctuationEnabled(
-      this.settings.half_width_punctuation
+      this.settings.half_width_punctuation,
     );
     this.inputController.setCtrlEnterOption(this.settings.ctrl_enter_option);
     this.inputController.setMovingCursorOption(
-      this.settings.moving_cursor_option
+      this.settings.moving_cursor_option,
     );
     this.inputController.setRepeatedPunctuationChooseCandidate(
-      this.settings.repeated_punctuation_choose_candidate
+      this.settings.repeated_punctuation_choose_candidate,
     );
     this.inputController.setBopomofoFontAnnotationSupportEnabled(
-      this.settings.bopomofo_font_annotation_support_enabled
+      this.settings.bopomofo_font_annotation_support_enabled,
     );
     this.inputController.setLanguageCode("zh-TW");
   }
@@ -401,7 +401,7 @@ class PimeMcBopomofo {
     fs.readFile(this.userSettingsPath, (err, data) => {
       if (err) {
         console.log(
-          "Unable to read user settings from " + this.userSettingsPath
+          "Unable to read user settings from " + this.userSettingsPath,
         );
         this.writeSettings();
         return;
@@ -412,7 +412,7 @@ class PimeMcBopomofo {
         const newSettings = JSON.parse(data.toString());
         this.settings = Object.assign({}, defaultSettings, newSettings);
         console.log(
-          "Loaded settings: " + JSON.stringify(this.settings, null, 2)
+          "Loaded settings: " + JSON.stringify(this.settings, null, 2),
         );
         this.applySettings();
       } catch {
@@ -426,7 +426,7 @@ class PimeMcBopomofo {
   public writeSettings() {
     if (!fs.existsSync(this.mcBopomofoUserDataPath)) {
       console.log(
-        "User data folder not found, creating " + this.mcBopomofoUserDataPath
+        "User data folder not found, creating " + this.mcBopomofoUserDataPath,
       );
       console.log("Creating one");
       fs.mkdirSync(this.mcBopomofoUserDataPath);
@@ -641,7 +641,7 @@ class PimeMcBopomofo {
     if (!fs.existsSync(userPhrasesUrl)) {
       fs.writeFileSync(
         userPhrasesUrl,
-        "# 一個詞彙一行，格式為：\n# 詞彙 注音\n# 例如：\n# 小麥注音 ㄒㄧㄠˇ-ㄇㄞˋ-ㄓㄨˋ-ㄧㄣ\n"
+        "# 一個詞彙一行，格式為：\n# 詞彙 注音\n# 例如：\n# 小麥注音 ㄒㄧㄠˇ-ㄇㄞˋ-ㄓㄨˋ-ㄧㄣ\n",
       );
       console.log("Created empty user phrase file at " + userPhrasesUrl);
     }
@@ -650,7 +650,7 @@ class PimeMcBopomofo {
     if (!fs.existsSync(excludedPhrasesUrl)) {
       fs.writeFileSync(
         excludedPhrasesUrl,
-        "# 一個詞彙一行，格式為：\n# 詞彙 注音\n# 例如：\n# 小麥注音 ㄒㄧㄠˇ-ㄇㄞˋ-ㄓㄨˋ-ㄧㄣ\n"
+        "# 一個詞彙一行，格式為：\n# 詞彙 注音\n# 例如：\n# 小麥注音 ㄒㄧㄠˇ-ㄇㄞˋ-ㄓㄨˋ-ㄧㄣ\n",
       );
       console.log("Created empty user phrase file at " + excludedPhrasesUrl);
     }
@@ -697,7 +697,7 @@ class PimeMcBopomofo {
             "..",
             "python",
             "python3",
-            "python.exe"
+            "python.exe",
           );
           const script = path.join(__dirname, "config_tool.py");
           const command = `"${python3}" "${script}"`;
@@ -715,7 +715,7 @@ class PimeMcBopomofo {
             "..",
             "python",
             "python3",
-            "python.exe"
+            "python.exe",
           );
           const script = path.join(__dirname, "config_tool.py");
           const command = `"${python3}" "${script}" user_phrases`;
@@ -762,7 +762,7 @@ class PimeMcBopomofo {
             "..",
             "python",
             "python3",
-            "python.exe"
+            "python.exe",
           );
           const script = path.join(__dirname, "config_tool.py");
           const command = `"${python3}" "${script}" help`;
@@ -807,7 +807,7 @@ try {
   if (!fs.existsSync(pimeMcBopomofo.userSettingsPath)) {
     fs.writeFileSync(
       pimeMcBopomofo.userSettingsPath,
-      JSON.stringify(defaultSettings)
+      JSON.stringify(defaultSettings),
     );
   }
 
@@ -924,7 +924,7 @@ module.exports = {
           uiState,
           {
             return: false,
-          }
+          },
         );
         // Note: We return false here so we can let the shift key event to be
         // passeds to IntelliJ and then IntelliJ can trigger the action menu by
@@ -966,7 +966,7 @@ module.exports = {
         keyCode,
         keyStates,
         String.fromCharCode(charCode),
-        charCode
+        charCode,
       );
 
       // Handles special key combinations for toggling input settings:
@@ -1001,7 +1001,7 @@ module.exports = {
           buttonUi,
           {
             return: true,
-          }
+          },
         );
         return response;
       }
@@ -1112,7 +1112,7 @@ module.exports = {
         responseTemplate,
         uiState,
         customUi,
-        buttonUi
+        buttonUi,
       );
       pimeMcBopomofo.resetBeforeHandlingKey();
       return response;
@@ -1129,7 +1129,7 @@ module.exports = {
         responseTemplate,
         uiState,
         customUi,
-        buttonUi
+        buttonUi,
       );
       return response;
     }
@@ -1190,7 +1190,7 @@ module.exports = {
         },
         {},
         {
-          text: "小麥注音輸入法 for PIME 2.0.5",
+          text: "小麥注音輸入法 for PIME 2.1.0",
         },
       ];
       const response = Object.assign({}, responseTemplate, { return: menu });
