@@ -566,6 +566,7 @@ export class KeyHandler {
     if (
       (key.name === KeyName.SPACE || key.name === KeyName.DOWN) &&
       maybeNotEmptyState instanceof NotEmpty &&
+      maybeNotEmptyState instanceof Marking === false &&
       this.reading_.isEmpty
     ) {
       const originalCursorIndex = this.grid_.cursor;
