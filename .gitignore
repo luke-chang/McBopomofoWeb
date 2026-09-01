@@ -10,6 +10,9 @@ bundle.js
 output/pime/index.js
 output/mcp/index.js
 output/cli/index.js
+output/macishtype/index.js
+output/macishtype/McBopomofo.js
+output/macishtype/_storage/
 installer/wix/McBopomofo/bin
 installer/wix/McBopomofo/*.msi
 *.wixpdb

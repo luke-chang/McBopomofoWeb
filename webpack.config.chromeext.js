@@ -13,6 +13,8 @@ module.exports = {
           path.resolve(__dirname, "src/mcp.ts"),
           path.resolve(__dirname, "src/pime.ts"),
           path.resolve(__dirname, "src/pime_keys.ts"),
+          path.resolve(__dirname, "src/macishtype.ts"),
+          path.resolve(__dirname, "src/macishtype_facade.ts"),
         ],
         use: "ts-loader",
       },

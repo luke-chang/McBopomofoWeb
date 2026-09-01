@@ -1,0 +1,43 @@
+{
+  "entry": "index.js",
+  "name": { "en": "McBopomofo", "zh-Hant": "小麥注音" },
+  "label": "注",
+  "intendedLanguage": "zh-Hant",
+  "settings": [
+    {
+      "title": { "en": "Typing", "zh-Hant": "輸入行為" },
+      "fields": [
+        {
+          "key": "keyboardLayout",
+          "type": "picker",
+          "label": { "en": "Keyboard layout", "zh-Hant": "鍵盤配置" },
+          "default": "Standard",
+          "style": "menu",
+          "options": [
+            { "text": { "en": "Standard",     "zh-Hant": "標準"      }, "tag": "Standard", "value": "Standard" },
+            { "text": { "en": "ETen",         "zh-Hant": "倚天"      }, "value": "ETen"        },
+            { "text": { "en": "Hsu",          "zh-Hant": "許氏"      }, "value": "Hsu"         },
+            { "text": { "en": "ETen 26",      "zh-Hant": "倚天 26"   }, "value": "ETen26"      },
+            { "text": { "en": "Hanyu Pinyin", "zh-Hant": "漢語拼音"  }, "value": "HanyuPinyin" },
+            { "text": { "en": "IBM",          "zh-Hant": "IBM"       }, "value": "IBM"         },
+            { "text": { "en": "Su",           "zh-Hant": "蘇式"      }, "value": "Su"          },
+            { "text": { "en": "GinYieh",      "zh-Hant": "精業"      }, "value": "GinYieh"     },
+            { "text": { "en": "MITAC",        "zh-Hant": "神通"      }, "value": "MITAC"       }
+          ]
+        },
+        {
+          "key": "candidateKeys",
+          "type": "picker",
+          "label": { "en": "Candidate selection keys", "zh-Hant": "選字按鍵" },
+          "default": "123456789",
+          "style": "menu",
+          "options": [
+            "123456789",
+            "asdfghjkl",
+            "asdfzxcvb"
+          ]
+        }
+      ]
+    }
+  ]
+}

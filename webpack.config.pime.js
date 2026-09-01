@@ -72,6 +72,8 @@ module.exports = {
         exclude: [
           path.resolve(__dirname, "src/index.ts"),
           path.resolve(__dirname, "src/chromeos_ime.ts"),
+          path.resolve(__dirname, "src/macishtype.ts"),
+          path.resolve(__dirname, "src/macishtype_facade.ts"),
         ],
         use: [
           {
