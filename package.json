@@ -28,6 +28,7 @@
     "build:pime": "webpack --mode production --config webpack.config.pime.js",
     "build:mcp": "webpack --mode production --config webpack.config.mcp.js",
     "build:cli": "webpack --mode production --config webpack.config.cli.js",
+    "build:macishtype": "webpack --mode production --config webpack.config.macishtype.js",
     "build:dev": "webpack --mode development",
     "build:watch": "webpack --mode development --watch",
     "prepare": "tsc",
