@@ -352,6 +352,86 @@ export class ReadingGrid {
     overrideType: OverrideType = OverrideType.kOverrideValueWithHighScore,
   ) => this.overrideCandidate_(loc, undefined, candidate, overrideType);
 
+  /**
+   * Walks the grid as if `candidate` were overridden at `loc`, then restores it.
+   * An override mutates the node it lands on and resets every node overlapping
+   * it, and the walk that follows can pick different nodes anywhere in the grid
+   * — so a caller that only needs to know what selecting a candidate *would*
+   * produce cannot predict it by splicing the value into the current walk.
+   * @param loc The location of the candidate.
+   * @param candidate The candidate to override.
+   * @param overrideType The type of override.
+   * @returns What the override would produce, or undefined if nothing would be
+   *          overridden. The walk is fixed (`copyWithFixedNodes`), so it stays
+   *          valid after the restore.
+   */
+  simulateOverrideCandidate(
+    loc: number,
+    candidate: Candidate,
+    overrideType: OverrideType = OverrideType.kOverrideValueWithHighScore
+  ): SimulatedOverride | undefined {
+    const savedStates = this.captureNodeStates_();
+    try {
+      if (
+        !this.overrideCandidate_(
+          loc,
+          candidate.reading,
+          candidate.value,
+          overrideType
+        )
+      ) {
+        return undefined;
+      }
+      const walk = this.walk();
+      // The overridden node is the one the walk now runs through at `loc` (same
+      // end-of-grid clamping overrideCandidate_ applies), which is also the
+      // position a caller wants: where the candidate sits in the new path.
+      const target = loc === this.readings_.length ? loc - 1 : loc;
+      let spanIndex = 0;
+      for (const node of walk.nodes) {
+        if (target < spanIndex + node.spanningLength) {
+          return new SimulatedOverride(
+            walk.copyWithFixedNodes(),
+            spanIndex,
+            node.spanningLength
+          );
+        }
+        spanIndex += node.spanningLength;
+      }
+      return undefined;
+    } finally {
+      this.restoreNodeStates_(savedStates);
+    }
+  }
+
+  // An override mutates nodes in place and never adds or removes them — only
+  // inserting or deleting readings rebuilds the spans — so a state list is
+  // enough to undo one.
+  private captureNodeStates_(): NodeState[] {
+    const states: NodeState[] = [];
+    for (const span of this.spans_) {
+      for (const node of span.nodes_) {
+        if (node !== undefined) {
+          states.push(new NodeState(node, node.overrideType, node.value));
+        }
+      }
+    }
+    return states;
+  }
+
+  private restoreNodeStates_(states: NodeState[]): void {
+    for (const state of states) {
+      if (state.overrideType === OverrideType.kNone) {
+        // Never overridden means it sat on its top unigram, where reset() puts it.
+        state.node.reset();
+      } else {
+        // A duplicate value re-selects the first match, which is equivalent:
+        // an override's score never depends on the index.
+        state.node.selectOverrideUnigram(state.value, state.overrideType);
+      }
+    }
+  }
+
   private overrideCandidate_(
     loc: number,
     reading: string | undefined,
@@ -638,6 +718,14 @@ export class Node {
    */
   get isOverridden(): boolean {
     return this.overrideType_ !== OverrideType.kNone;
+  }
+
+  /**
+   * How the node is overridden, if it is. Pair with `value` and
+   * `selectOverrideUnigram` to save and restore the node's state.
+   */
+  get overrideType(): OverrideType {
+    return this.overrideType_;
   }
 
   /**
@@ -1020,6 +1108,31 @@ function TopologicalSort(root: Vertex): Vertex[] {
     stack.pop();
   }
   return result;
+}
+
+/**
+ * What a hypothetical override would produce. See
+ * `ReadingGrid.simulateOverrideCandidate`.
+ * @class
+ */
+export class SimulatedOverride {
+  constructor(
+    /** The walk the override would produce, over copies of the nodes. */
+    public readonly walk: WalkResult,
+    /** Starting reading position of the overridden node. */
+    public readonly spanIndex: number,
+    /** How many readings the overridden node spans. */
+    public readonly spanningLength: number
+  ) { }
+}
+
+/** A node's override state, captured so it can be restored afterwards. */
+class NodeState {
+  constructor(
+    public readonly node: Node,
+    public readonly overrideType: OverrideType,
+    public readonly value: string
+  ) { }
 }
 
 function GetEpochNowInMicroseconds(): number {

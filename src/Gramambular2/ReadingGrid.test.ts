@@ -1,5 +1,6 @@
 import { LanguageModel, Unigram } from "./LanguageModel";
 import {
+  Candidate,
   Node,
   OverrideType,
   ReadingGrid,
@@ -327,5 +328,77 @@ describe("ReadingGrid", () => {
     const slm = new ScoreRankedLanguageModel(innerLm);
     expect(() => slm.getUnigrams("key")).toThrow();
     expect(() => slm.hasUnigrams("key")).toThrow();
+  });
+});
+
+// A model where the *default* walk goes through a two-reading node ("a-b"), so
+// pinning a node that overlaps it forces the walk onto different nodes
+// elsewhere. This is the case a caller cannot predict by splicing the chosen
+// value into the current walk.
+class PhraseCompetitionLanguageModel implements LanguageModel {
+  private readonly table: Record<string, Unigram[]> = {
+    a: [new Unigram("X", -5)],
+    b: [new Unigram("B", -5)],
+    c: [new Unigram("C", -5), new Unigram("C2", -9)],
+    "a-b": [new Unigram("AB", -1)],
+    "b-c": [new Unigram("BC", -3), new Unigram("BC2", -4)],
+  };
+
+  getUnigrams(key: string): Unigram[] {
+    return this.table[key] ?? [];
+  }
+
+  hasUnigrams(key: string): boolean {
+    return this.getUnigrams(key).length > 0;
+  }
+}
+
+describe("ReadingGrid.simulateOverrideCandidate", () => {
+  const buildGrid = (): ReadingGrid => {
+    const grid = new ReadingGrid(new PhraseCompetitionLanguageModel());
+    grid.insertReading("a");
+    grid.insertReading("b");
+    grid.insertReading("c");
+    return grid;
+  };
+  const bc2 = new Candidate("b-c", "BC2", "BC2");
+
+  it("returns the walk the override would produce, not the value spliced in", () => {
+    const grid = buildGrid();
+    expect(grid.walk().valuesAsStrings()).toStrictEqual(["AB", "C"]);
+
+    const simulated = grid.simulateOverrideCandidate(1, bc2);
+    expect(simulated).toBeDefined();
+    // "AB" cannot survive: it overlaps the pinned node, so reading 0 falls back
+    // to its own node ("X") — a segment the caller never touched.
+    expect(simulated?.walk.valuesAsStrings()).toStrictEqual(["X", "BC2"]);
+    expect(simulated?.spanIndex).toBe(1);
+    expect(simulated?.spanningLength).toBe(2);
+  });
+
+  it("leaves the grid untouched, existing overrides included", () => {
+    const grid = buildGrid();
+    expect(grid.overrideCandidateWithString(2, "C2")).toBe(true);
+    const before = grid.walk().valuesAsStrings();
+    expect(before).toStrictEqual(["AB", "C2"]);
+
+    grid.simulateOverrideCandidate(1, bc2);
+
+    expect(grid.walk().valuesAsStrings()).toStrictEqual(before);
+  });
+
+  it("keeps the simulated walk readable after the grid is restored", () => {
+    const grid = buildGrid();
+    const simulated = grid.simulateOverrideCandidate(1, bc2);
+    grid.walk();
+    expect(simulated?.walk.valuesAsStrings()).toStrictEqual(["X", "BC2"]);
+  });
+
+  it("returns undefined when the candidate cannot be overridden", () => {
+    const grid = buildGrid();
+    expect(
+      grid.simulateOverrideCandidate(1, new Candidate("b-c", "nope", "nope"))
+    ).toBeUndefined();
+    expect(grid.walk().valuesAsStrings()).toStrictEqual(["AB", "C"]);
   });
 });
