@@ -924,6 +924,36 @@ export class KeyHandler {
     stateCallback(this.buildInputtingState());
   }
 
+  /**
+   * Where a reading position falls in the composing buffer, as a character
+   * offset. The two only coincide while every walked node spells one character
+   * per reading, so a host anchoring UI to a segment of the buffer has to
+   * convert rather than reuse a reading index.
+   * @returns Offset into the buffer `buildInputtingState` produces. Positions
+   *          inside a node are clamped to that node's end, as the cursor is.
+   */
+  public composedOffsetAt(readingIndex: number): number {
+    return this.composedOffset_(readingIndex, false);
+  }
+
+  // getComposedString splits the walked text at a reading index, so its head
+  // length is that index's offset. `atSegmentEnd` decides an offset landing
+  // exactly on the cursor: a segment's start is pushed past the in-progress
+  // bopomofo there, a segment's end is not.
+  private composedOffset_(readingIndex: number, atSegmentEnd: boolean): number {
+    const offset = this.getComposedString(readingIndex).head.length;
+    const readingLength = this.reading_.composedString.length;
+    if (readingLength === 0) {
+      return offset;
+    }
+    // buildInputtingState splices it in at the cursor, pushing the rest right.
+    const cursorOffset = this.getComposedString(this.grid_.cursor).head.length;
+    const pushed = atSegmentEnd
+      ? offset > cursorOffset
+      : offset >= cursorOffset;
+    return pushed ? offset + readingLength : offset;
+  }
+
   public candidatePanelPunctuationListCancelled(
     originalCursorIndex: number,
     stateCallback: (state: InputState) => void

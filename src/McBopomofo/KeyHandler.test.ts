@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { Candidate } from "../Gramambular2";
 import { BopomofoKeyboardLayout } from "../Mandarin";
 import { CtrlEnterOption } from "./CtrlEnterOption";
 import {
@@ -3124,5 +3125,54 @@ describe("Changing reading using tone key", () => {
 
   test("Input 小麥 then change to tone 5", () => {
     checkChangingReadingUsingToneKey("vul3a947", "小麥˙");
+  });
+});
+
+describe("KeyHandler.composedOffsetAt", () => {
+  // 大千 18 ␣ 1o4 2ji ␣ → ㄅㄚ ㄅㄟˋ ㄉㄨㄛ (巴貝多), then pick the 🇧🇧 candidate for
+  // all three readings and add a fourth (ㄋㄧˇ). The buffer is now "🇧🇧你": four
+  // readings, but only five UTF-16 units — a node that spells fewer characters
+  // than it spans pulls the two coordinate systems apart.
+  function buildFlagBuffer(): KeyHandler {
+    const keyHandler = new KeyHandler(
+      new WebLanguageModel(webData),
+      new LocalizedStrings()
+    );
+    keyHandler.keyboardLayout = BopomofoKeyboardLayout.StandardLayout;
+    let state: InputState = new Empty();
+    const send = (key: Key) =>
+      keyHandler.handle(key, state, (next) => (state = next), () => {});
+    for (const key of asciiKey("18".split(""))) send(key);
+    send(Key.namedKey(KeyName.SPACE));
+    for (const key of asciiKey("1o42ji".split(""))) send(key);
+    send(Key.namedKey(KeyName.SPACE));
+    send(Key.namedKey(KeyName.DOWN));
+    expect(state).toBeInstanceOf(ChoosingCandidate);
+    const choosing = state as ChoosingCandidate;
+    const flag = choosing.candidates.find((each) => each.value === "🇧🇧");
+    expect(flag).toBeDefined();
+    keyHandler.candidateSelected(
+      flag as Candidate,
+      choosing.originalCursorIndex,
+      (next) => (state = next)
+    );
+    for (const key of asciiKey("su3".split(""))) send(key);
+    expect(keyHandler.buildInputtingState().composingBuffer).toBe("🇧🇧你");
+    return keyHandler;
+  }
+
+  test("maps a reading position to its character offset", () => {
+    const keyHandler = buildFlagBuffer();
+    expect(keyHandler.composedOffsetAt(0)).toBe(0);
+    // Reading 3 is the fourth syllable, but only the fifth UTF-16 unit in.
+    expect(keyHandler.composedOffsetAt(3)).toBe(4);
+    expect(keyHandler.composedOffsetAt(4)).toBe(5);
+  });
+
+  test("clamps a position inside a node to that node's end", () => {
+    const keyHandler = buildFlagBuffer();
+    // Readings 1 and 2 fall inside the 🇧🇧 node, which spans all three.
+    expect(keyHandler.composedOffsetAt(1)).toBe(4);
+    expect(keyHandler.composedOffsetAt(2)).toBe(4);
   });
 });
