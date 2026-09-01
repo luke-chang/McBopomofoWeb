@@ -3128,6 +3128,155 @@ describe("Changing reading using tone key", () => {
   });
 });
 
+describe("KeyHandler.previewCandidateSelection", () => {
+  // 大千 hk4 g4 so4 → ㄘㄜˋ ㄕˋ ㄋㄟˋ, whose default walk is the phrase 測試 plus
+  // 內. Choosing 室內 for the last two readings breaks up 測試, so the first
+  // character changes as well — exactly what a preview cannot get right by
+  // splicing the chosen value into the current composing buffer.
+  function openCandidates(): {
+    keyHandler: KeyHandler;
+    state: ChoosingCandidate;
+  } {
+    const keyHandler = new KeyHandler(
+      new WebLanguageModel(webData),
+      new LocalizedStrings()
+    );
+    keyHandler.keyboardLayout = BopomofoKeyboardLayout.StandardLayout;
+    let state: InputState = handleKeySequence(
+      keyHandler,
+      asciiKey("hk4g4so4".split(""))
+    );
+    expect(state).toBeInstanceOf(Inputting);
+    expect((state as Inputting).composingBuffer).toBe("測試內");
+    keyHandler.handle(
+      Key.namedKey(KeyName.DOWN),
+      state,
+      (newState) => (state = newState),
+      () => {}
+    );
+    expect(state).toBeInstanceOf(ChoosingCandidate);
+    return { keyHandler, state: state as ChoosingCandidate };
+  }
+
+  function roomCandidate(state: ChoosingCandidate): Candidate {
+    const candidate = state.candidates.find((each) => each.value === "室內");
+    expect(candidate).toBeDefined();
+    return candidate as Candidate;
+  }
+
+  test("previews the walk the selection would produce", () => {
+    const { keyHandler, state } = openCandidates();
+    const preview = keyHandler.previewCandidateSelection(
+      roomCandidate(state),
+      state.originalCursorIndex
+    );
+    expect(preview?.composingBuffer).toBe("策室內");
+    expect(preview?.emphasisStart).toBe(1);
+    expect(preview?.emphasisEnd).toBe(3);
+  });
+
+  test("matches what selecting the candidate actually produces", () => {
+    const { keyHandler, state } = openCandidates();
+    const candidate = roomCandidate(state);
+    const preview = keyHandler.previewCandidateSelection(
+      candidate,
+      state.originalCursorIndex
+    );
+
+    let selected: InputState = state;
+    keyHandler.candidateSelected(
+      candidate,
+      state.originalCursorIndex,
+      (newState) => (selected = newState)
+    );
+    expect(selected).toBeInstanceOf(Inputting);
+    expect((selected as Inputting).composingBuffer).toBe(
+      preview?.composingBuffer
+    );
+    expect((selected as Inputting).cursorIndex).toBe(preview?.cursorIndex);
+  });
+
+  test("leaves the state it previewed untouched", () => {
+    const { keyHandler, state } = openCandidates();
+    keyHandler.previewCandidateSelection(
+      roomCandidate(state),
+      state.originalCursorIndex
+    );
+    expect(keyHandler.buildInputtingState().composingBuffer).toBe("測試內");
+  });
+
+  // Cursor in the middle of the buffer, so the node a candidate pins can end
+  // past where the candidate window was opened — the only setup where
+  // moveCursorAfterSelection changes where the cursor lands.
+  function openCandidatesAfterFirstCharacter(): {
+    keyHandler: KeyHandler;
+    state: ChoosingCandidate;
+    candidate: Candidate;
+  } {
+    const keyHandler = new KeyHandler(
+      new WebLanguageModel(webData),
+      new LocalizedStrings()
+    );
+    keyHandler.keyboardLayout = BopomofoKeyboardLayout.StandardLayout;
+    let state: InputState = handleKeySequence(
+      keyHandler,
+      asciiKey("hk4g4so4".split(""))
+    );
+    for (const key of [
+      Key.namedKey(KeyName.LEFT),
+      Key.namedKey(KeyName.LEFT),
+      Key.namedKey(KeyName.DOWN),
+    ]) {
+      keyHandler.handle(key, state, (newState) => (state = newState), () => {});
+    }
+    expect(state).toBeInstanceOf(ChoosingCandidate);
+    const choosing = state as ChoosingCandidate;
+    const candidate = choosing.candidates.find((each) => each.value === "測試");
+    expect(candidate).toBeDefined();
+    return { keyHandler, state: choosing, candidate: candidate as Candidate };
+  }
+
+  test.each([
+    [false, 1],
+    [true, 2],
+  ])(
+    "places the preview cursor as the selection would with moveCursorAfterSelection %s",
+    (moveCursorAfterSelection, expectedCursor) => {
+      const { keyHandler, state, candidate } =
+        openCandidatesAfterFirstCharacter();
+      keyHandler.moveCursorAfterSelection = moveCursorAfterSelection;
+
+      const preview = keyHandler.previewCandidateSelection(
+        candidate,
+        state.originalCursorIndex
+      );
+      expect(preview?.cursorIndex).toBe(expectedCursor);
+
+      let selected: InputState = state;
+      keyHandler.candidateSelected(
+        candidate,
+        state.originalCursorIndex,
+        (newState) => (selected = newState)
+      );
+      expect(selected).toBeInstanceOf(Inputting);
+      expect((selected as Inputting).cursorIndex).toBe(preview?.cursorIndex);
+      expect((selected as Inputting).composingBuffer).toBe(
+        preview?.composingBuffer
+      );
+    }
+  );
+
+  test("returns undefined when the candidate cannot be overridden", () => {
+    const { keyHandler, state } = openCandidates();
+    expect(
+      keyHandler.previewCandidateSelection(
+        new Candidate("ㄕˋ-ㄋㄟˋ", "無此候選", "無此候選"),
+        state.originalCursorIndex
+      )
+    ).toBeUndefined();
+  });
+});
+
 describe("KeyHandler.composedOffsetAt", () => {
   // 大千 18 ␣ 1o4 2ji ␣ → ㄅㄚ ㄅㄟˋ ㄉㄨㄛ (巴貝多), then pick the 🇧🇧 candidate for
   // all three readings and add a fourth (ㄋㄧˇ). The buffer is now "🇧🇧你": four

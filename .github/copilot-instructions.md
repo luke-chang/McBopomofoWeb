@@ -93,6 +93,7 @@ McBopomofoWeb is a TypeScript implementation of the McBopomofo (小麥注音) in
 - **Bopomofo phonetics**: Use `BopomofoSyllable` and `BopomofoReadingBuffer` for phonetic processing
 - **Character selection**: Leverage `CandidateController` for managing selection UI
 - **Feature-driven modes**: `SelectingFeature` can route into `Big5`, `NumberInput`, `SelectingDateMacro`, and `Iroha`; `IrohaCandidate` is handled through the same candidate window flow as other selection states.
+- **Candidate previews**: Selecting a candidate re-walks the whole grid, so segments *outside* the candidate's own span can change: a phrase the candidate overlaps breaks up, and the readings it leaves behind fall back to other nodes. Hosts that preview the highlighted candidate must go through `KeyHandler.previewCandidateSelection`, backed by `ReadingGrid.simulateOverrideCandidate`, and never splice the candidate value into the current composing buffer.
 - **Keyboard layouts**: Extend `BopomofoKeyboardLayout` for different input schemes
 - **Platform integration**: Implement platform-specific adapters in respective output directories
 
