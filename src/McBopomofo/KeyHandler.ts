@@ -262,6 +262,14 @@ export class KeyHandler {
   private reading_: BopomofoReadingBuffer;
   private latestWalk_: WalkResult | undefined;
 
+  /**
+   * In-progress bopomofo syllable as it appears in the composing buffer.
+   * Empty between completed syllables.
+   */
+  public get composedReading(): string {
+    return this.reading_.composedString;
+  }
+
   /** The dictionary services. */
   readonly dictionaryServices: DictionaryServices;
   public get onOpenUrl(): ((input: string) => void) | undefined {
