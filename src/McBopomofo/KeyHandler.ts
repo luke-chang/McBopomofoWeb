@@ -59,6 +59,20 @@ export class ComposedString {
   ) {}
 }
 
+/**
+ * The composing buffer that selecting a candidate would produce. See
+ * `KeyHandler.previewCandidateSelection`.
+ */
+export class CandidateSelectionPreview {
+  constructor(
+    public readonly composingBuffer: string,
+    public readonly cursorIndex: number,
+    /** Range of the candidate's own text within `composingBuffer`; end exclusive. */
+    public readonly emphasisStart: number,
+    public readonly emphasisEnd: number
+  ) {}
+}
+
 const kPunctuationListKey = "`"; // Hit the key to bring up the list.
 const kPunctuationListUnigramKey = "_punctuation_list";
 const kPunctuationKeyPrefix = "_punctuation_";
@@ -922,6 +936,62 @@ export class KeyHandler {
 
     this.pinNode(candidate, originalCursorIndex);
     stateCallback(this.buildInputtingState());
+  }
+
+  /**
+   * Builds the composing buffer that selecting `candidate` would produce,
+   * without selecting it. Segments outside the candidate's own span can change
+   * too, so a host previewing the highlighted candidate has to come through
+   * here rather than splice the value in — see
+   * `ReadingGrid.simulateOverrideCandidate`.
+   * @param originalCursorIndex The cursor index the candidate window was opened
+   *                            with, as passed to `candidateSelected`.
+   * @returns The preview, or undefined when the candidate cannot be overridden
+   *          (and so selecting it would change nothing).
+   */
+  public previewCandidateSelection(
+    candidate: Candidate,
+    originalCursorIndex: number
+  ): CandidateSelectionPreview | undefined {
+    const actualCursor = this.actualCandidateCursorIndex;
+    const simulated = this.grid_.simulateOverrideCandidate(
+      actualCursor,
+      new Candidate(candidate.reading, candidate.value, candidate.displayedText)
+    );
+    if (simulated === undefined) {
+      return undefined;
+    }
+
+    // Mirror pinNode's cursor placement: it moves to the end of the pinned node
+    // only under moveCursorAfterSelection, and bails out without touching the
+    // cursor when the walk has no node at the override.
+    let previewCursor = originalCursorIndex;
+    const found = simulated.walk.findNodeAt(actualCursor);
+    if (found[0] === undefined) {
+      previewCursor = this.grid_.cursor;
+    } else if (this.moveCursorAfterSelection_) {
+      previewCursor = found[1];
+    }
+
+    const savedWalk = this.latestWalk_;
+    const savedCursor = this.grid_.cursor;
+    this.latestWalk_ = simulated.walk;
+    this.grid_.cursor = previewCursor;
+    try {
+      const inputting = this.buildInputtingState();
+      return new CandidateSelectionPreview(
+        inputting.composingBuffer,
+        inputting.cursorIndex,
+        this.composedOffset_(simulated.spanIndex, false),
+        this.composedOffset_(
+          simulated.spanIndex + simulated.spanningLength,
+          true
+        )
+      );
+    } finally {
+      this.latestWalk_ = savedWalk;
+      this.grid_.cursor = savedCursor;
+    }
   }
 
   /**
