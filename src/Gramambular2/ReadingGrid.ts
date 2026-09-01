@@ -303,7 +303,12 @@ export class ReadingGrid {
     for (const nodeInSpan of nodes) {
       for (const unigram of nodeInSpan.node.unigrams) {
         result.push(
-          new Candidate(nodeInSpan.node.reading, unigram.value, unigram.value),
+          new Candidate(
+            nodeInSpan.node.reading,
+            unigram.value,
+            unigram.value,
+            nodeInSpan.spanIndex,
+          ),
         );
       }
     }
@@ -807,6 +812,11 @@ export class Candidate {
      * have multiple duplicated candidate whose value is "你", but the displayed
      * text could be "你 1", "你 2" and so on. */
     public readonly displayedText: string,
+    /** Starting reading position of this candidate's span in the grid. Set by
+     * `candidatesAt` so callers can map the candidate back to the readings it
+     * covers — to place UI under the segment being chosen, say. Counts
+     * readings, not characters. -1 when constructed outside that flow. */
+    public readonly spanIndex: number = -1,
   ) {}
 }
 
