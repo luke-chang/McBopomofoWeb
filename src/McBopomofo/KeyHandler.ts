@@ -601,6 +601,12 @@ export class KeyHandler {
           stateCallback(this.buildInputtingState());
         }
       } else {
+        // Esc out of Marking: restore cursor to its pre-marking position so
+        // the caret doesn't get stranded at the shifted-to edge of the mark.
+        if (maybeNotEmptyState instanceof Marking) {
+          this.grid_.cursor =
+            (maybeNotEmptyState as Marking).markStartGridCursorIndex;
+        }
         stateCallback(this.buildInputtingState());
       }
       return true;
@@ -734,6 +740,11 @@ export class KeyHandler {
               marking.markedText
             );
           }
+          // Restore cursor to where the user was before they started marking.
+          // Otherwise the new Inputting state inherits grid_.cursor at the
+          // shifted-to edge of the mark, surprising users who expect the
+          // caret to return to its pre-marking position.
+          this.grid_.cursor = marking.markStartGridCursorIndex;
           stateCallback(this.buildInputtingState());
         } else {
           errorCallback();
