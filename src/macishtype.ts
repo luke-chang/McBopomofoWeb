@@ -13,9 +13,9 @@ function pickLanguageCode(): string {
   return "en";
 }
 
-// Shared by Marking tooltip and the candidate-window + / - flow. `kind`
-// only affects ok / exists wording; length-limit text is shared.
-function formatPhraseOpTooltip(
+// Shared by the Marking status message and the + / - confirmation message.
+// `kind` only affects ok / exists wording; length-limit text is shared.
+function formatPhraseOpMessage(
   kind: "add" | "exclude",
   value: string,
   status: "ok" | "exists" | "tooShort" | "tooLong",
@@ -163,12 +163,13 @@ export default class McBopomofoEngine implements InputEngine {
 
     const snap = McBopomofoEngine.engine.snapshot();
 
-    // +/- confirmation modal. Enter routes confirm through
-    // commitSelectedCandidate (shared with the mouse double-click via
-    // candidateConfirmed); Esc cancels here; everything else is swallowed.
+    // +/- confirmation modal. The prompt is a message, so the host intercepts
+    // nothing and every key lands here: Enter confirms, Esc cancels, and the
+    // rest is swallowed so a stray key can't reach the candidate list the
+    // prompt replaced.
     if (this.pendingPhraseOp) {
       if (event.code === "Enter") {
-        event.commitSelectedCandidate();
+        this._resolvePendingPhraseOp(event, true);
         return true;
       }
       if (event.code === "Escape") {
@@ -225,7 +226,7 @@ export default class McBopomofoEngine implements InputEngine {
         return true;
       }
       // + / - on the highlighted candidate: enter the modal confirmation
-      // tooltip (handled at the top of handleKey on the next keypress).
+      // prompt (handled at the top of handleKey on the next keypress).
       // Must precede the deferred-key path; otherwise + / - would commit
       // the candidate and type the character. Keyed by physical code so
       // the binding lands on the same physical key across layouts, and on
@@ -244,18 +245,13 @@ export default class McBopomofoEngine implements InputEngine {
             this.pendingPhraseOp = {
               kind: opKind, reading: c.reading, value: c.value, status,
             };
-            // Keep the window under the same anchor _apply's choosing case
-            // used, so the tooltip doesn't jump.
-            // Opt out of host nav interception so Enter (confirm) / Escape
-            // (cancel) reach the pendingPhraseOp handler at the top of handleKey.
-            event.updateCandidates(
-              [{ candidate: formatPhraseOpTooltip(opKind, c.value, status) }],
-              {
-                anchorAt: graphemeIndex(snap.composing, snap.anchorOffset),
-                initialHighlight: -1,
-                indexLabels: "",
-                handleNavigationKeys: false,
-              },
+            // A prompt, not a candidate: as a message it takes no key and
+            // can't be clicked, so Enter (confirm) / Escape (cancel) reach the
+            // pendingPhraseOp handler at the top of handleKey. Anchored where
+            // _apply's choosing case put the window, so it doesn't jump.
+            event.updateMessage(
+              formatPhraseOpMessage(opKind, c.value, status),
+              { anchorAt: graphemeIndex(snap.composing, snap.anchorOffset) },
             );
           }
           return true;
@@ -285,11 +281,11 @@ export default class McBopomofoEngine implements InputEngine {
       return true;
     }
 
-    // Marking Enter (save) routes through commitSelectedCandidate, sharing
-    // candidateConfirmed's marking branch with the mouse double-click. Other
-    // marking keys fall through to the facade below.
+    // Marking Enter saves the phrase. The status line is a message, so
+    // nothing intercepts Enter on the way here. Other marking keys fall
+    // through to the facade below.
     if (snap.kind === "marking" && event.code === "Enter") {
-      event.commitSelectedCandidate();
+      this._saveMarkedPhrase(event);
       return true;
     }
 
@@ -318,35 +314,17 @@ export default class McBopomofoEngine implements InputEngine {
     return result.handled;
   }
 
-  // Single confirm executor, branching on facade state, not source: a mouse
-  // double-click arrives directly; keyboard Enter routes here via the host's
-  // commit path (handleKey re-emits tooltip Enters as commitSelectedCandidate).
+  // Both sources of a candidate commit land here: the user's Enter / index
+  // key (the host owns those while the window is up) and a mouse click on a
+  // row. Only real candidates reach it — the Marking status line and the + / -
+  // prompt are messages, which take no key and can't be clicked.
   //
   // Always return true: returning undefined makes the host flushStaged, which
   // would prematurely commit a still-composing inputting state.
   candidateConfirmed(event: ConfirmEvent): boolean {
-    // +/- modal: resolve the op. Checked first — the facade is still
-    // "choosing" here, so the snapshot below can't distinguish it.
-    if (this.pendingPhraseOp) {
-      this._resolvePendingPhraseOp(event, true);
-      return true;
-    }
-
     const snap = McBopomofoEngine.engine.snapshot();
-    // Marking row: save the phrase (push Return). If it stays stuck in Marking
-    // (phrase already exists), force-exit with Esc.
-    if (snap.kind === "marking") {
-      const result = McBopomofoEngine.engine.pushKey(Key.namedKey(KeyName.RETURN));
-      if (result.snapshot.kind === "marking") {
-        this._apply(event, McBopomofoEngine.engine.pushKey(Key.namedKey(KeyName.ESC)));
-      } else {
-        this._apply(event, result);
-      }
-      return true;
-    }
-
-    // Real candidate: select the index. -1 (commitSelectedCandidate with no
-    // highlight) or non-choosing state has nothing to select.
+    // Select the index. -1 (commitSelectedCandidate with no highlight) or a
+    // non-choosing state has nothing to select.
     if (snap.kind !== "choosing" || event.absoluteIndex < 0) return true;
 
     const result = McBopomofoEngine.engine.selectCandidate(event.absoluteIndex);
@@ -369,10 +347,6 @@ export default class McBopomofoEngine implements InputEngine {
   // Return true to suppress the host fallback (currently a no-op, but the
   // contract reserves it for future host defaults). We fully own the preview.
   candidateSelectionChanged(event: ConfirmEvent): boolean {
-    // A mouse single-click fires this even on the +/- tooltip; recording its
-    // index would drop the user back to candidate 0 on confirm. Ignore while
-    // the modal is up.
-    if (this.pendingPhraseOp) return true;
     if (event.absoluteIndex < 0) return true;
     this.lastChoosingHighlight = event.absoluteIndex;
     // Whole-buffer preview from the facade — anything less can contradict what
@@ -411,6 +385,17 @@ export default class McBopomofoEngine implements InputEngine {
         end: graphemeIndex(text, options.emphasis.end),
       },
     });
+  }
+
+  // Save the marked phrase (push Return). If the facade stays in Marking —
+  // the phrase already exists — force-exit with Esc.
+  private _saveMarkedPhrase(event: KeyEvent): void {
+    const result = McBopomofoEngine.engine.pushKey(Key.namedKey(KeyName.RETURN));
+    if (result.snapshot.kind === "marking") {
+      this._apply(event, McBopomofoEngine.engine.pushKey(Key.namedKey(KeyName.ESC)));
+    } else {
+      this._apply(event, result);
+    }
   }
 
   // Confirm (run the op when status is "ok") or abandon the +/- modal, then
@@ -472,7 +457,7 @@ export default class McBopomofoEngine implements InputEngine {
   // `initialHighlight` only matters for the choosing case; defaults to 0
   // (host's natural "highlight first" behavior). Pending +/- exit passes
   // the saved highlight to preserve the user's selection across the
-  // tooltip detour.
+  // prompt detour.
   private _apply(
     event: KeyEvent | ConfirmEvent,
     result: PushResult,
@@ -491,6 +476,8 @@ export default class McBopomofoEngine implements InputEngine {
       return;
     }
     const snap = result.snapshot;
+    // choosing and marking emit their own panel below — a candidate list and a
+    // message — and either replaces whatever the window was holding.
     if (snap.kind !== "choosing" && snap.kind !== "marking") {
       event.updateCandidates([]);
     }
@@ -520,19 +507,12 @@ export default class McBopomofoEngine implements InputEngine {
           emphasis: { start: snap.markStart, end: snap.markEnd },
         });
         const marked = snap.composing.slice(snap.markStart, snap.markEnd);
-        // Status-line role: empty `indexLabels` hides the leading "1." and
-        // `initialHighlight: -1` keeps the row from looking selectable. Opt out
-        // of host nav interception so arrows (extend / shrink the mark) and
-        // Enter (save) reach handleKey instead of navigating / committing this
-        // 1-item window.
-        event.updateCandidates(
-          [{ candidate: formatPhraseOpTooltip("add", marked, snap.status) }],
-          {
-            anchorAt: graphemeIndex(snap.composing, snap.markStart),
-            initialHighlight: -1,
-            indexLabels: "",
-            handleNavigationKeys: false,
-          },
+        // A status line, not something to pick: as a message it takes no key,
+        // so arrows (extend / shrink the mark) and Enter (save) reach
+        // handleKey untouched.
+        event.updateMessage(
+          formatPhraseOpMessage("add", marked, snap.status),
+          { anchorAt: graphemeIndex(snap.composing, snap.markStart) },
         );
         break;
       }

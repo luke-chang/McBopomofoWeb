@@ -74,10 +74,12 @@ function makeEvent(props: Partial<KeyEvent & ConfirmEvent> = {}): FakeEvent {
     candidate: "",
     absoluteIndex: -1,
     payload: undefined,
+    message: null,
     candidateWindow: { isVisible: false },
     getModifierState: () => false,
     updateMarkedText: record("updateMarkedText"),
     updateCandidates: record("updateCandidates"),
+    updateMessage: record("updateMessage"),
     commit: record("commit"),
     commitSelectedCandidate: record("commitSelectedCandidate"),
     commitCandidateAtIndex: record("commitCandidateAtIndex"),
@@ -369,5 +371,84 @@ describe("McBopomofoEngine MacishType wrapper", () => {
     expect(sharedEngine().snapshot().kind).toBe("inputting");
     engine.compositionEnded();
     expect(sharedEngine().snapshot()).toEqual({ kind: "empty" });
+  });
+
+  // Shift+Left from 大千 hk4 g4 (ㄘㄜˋ ㄕˋ → 測試) marks the last syllable: one
+  // reading, below the two-syllable minimum, so the status text is fixed
+  // whatever the dictionaries hold.
+  function markLastSyllable(
+    target: InstanceType<EngineModule["default"]>
+  ): FakeEvent {
+    compose(target, ["h", "k", "4", "g", "4"]);
+    const mark = makeEvent({
+      key: "ArrowLeft",
+      code: "ArrowLeft",
+      shiftKey: true,
+    });
+    press(target, mark);
+    expect(sharedEngine().snapshot().kind).toBe("marking");
+    return mark;
+  }
+
+  test("the Marking status line is a message, not a one-item candidate list", () => {
+    const mark = markLastSyllable(engine);
+    expect(mark.last("updateMessage")?.args[0]).toBe("需 2 字以上");
+    // Anchored on the mark, and emitted after the marked text it indexes into.
+    expect(mark.last("updateMessage")?.args[1]).toMatchObject({ anchorAt: 1 });
+    expect(mark.calls.map((each) => each.name)).toEqual([
+      "updateMarkedText",
+      "updateMessage",
+    ]);
+  });
+
+  test("Marking Enter saves through the facade, not the host commit path", () => {
+    markLastSyllable(engine);
+    const enter = makeEvent({ key: "Enter", code: "Enter" });
+    press(engine, enter);
+    // A message can't be committed, so nothing routes through the host.
+    expect(enter.last("commitSelectedCandidate")).toBeUndefined();
+    // One reading is unacceptable: the facade stays in Marking on Return, and
+    // the Esc fallback is what gets us back to inputting.
+    expect(sharedEngine().snapshot().kind).toBe("inputting");
+  });
+
+  // Highlights 室內 in the candidate list and presses the physical "=" key.
+  function pressPlusOnRoom(
+    target: InstanceType<EngineModule["default"]>
+  ): { roomIndex: number; reading: string; plus: FakeEvent } {
+    const { roomIndex } = openCandidatesForRoom(target);
+    selectionChanged(target, makeEvent({ candidate: "室內", absoluteIndex: roomIndex }));
+    const reading = sharedEngine().snapshot().candidates[roomIndex].reading;
+    const plus = makeEvent({ key: "=", code: "Equal" });
+    press(target, plus);
+    return { roomIndex, reading, plus };
+  }
+
+  test("the + / - confirmation is a message; Escape restores the candidate list", () => {
+    const { roomIndex, reading, plus } = pressPlusOnRoom(engine);
+    expect(plus.last("updateMessage")?.args[0]).toBe("加入「室內」  ↵");
+    expect(plus.last("updateCandidates")).toBeUndefined();
+
+    const escape = makeEvent({ key: "Escape", code: "Escape" });
+    press(engine, escape);
+    // Back to the list under the highlight the user left it on, with nothing
+    // written to the user dictionary.
+    expect(escape.last("updateCandidates")?.args[1]).toMatchObject({
+      initialHighlight: roomIndex,
+    });
+    expect(sharedEngine().checkPhraseStatus("add", reading, "室內")).toBe("ok");
+  });
+
+  test("Enter on the + confirmation adds the phrase and restores the list", () => {
+    const { roomIndex, reading, plus } = pressPlusOnRoom(engine);
+    expect(plus.last("updateMessage")).toBeDefined();
+
+    const enter = makeEvent({ key: "Enter", code: "Enter" });
+    press(engine, enter);
+    expect(enter.last("commitSelectedCandidate")).toBeUndefined();
+    expect(sharedEngine().checkPhraseStatus("add", reading, "室內")).toBe("exists");
+    expect(enter.last("updateCandidates")?.args[1]).toMatchObject({
+      initialHighlight: roomIndex,
+    });
   });
 });
