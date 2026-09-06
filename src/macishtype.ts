@@ -482,6 +482,17 @@ export default class McBopomofoEngine implements InputEngine {
           cursor: snap.cursor,
           staged,
         });
+        // KeyHandler's own tooltip, anchored on the cursor it talks about.
+        // Reachable case: the cursor sits inside a node whose text is shorter
+        // or longer than its readings (a date macro, an emoji phrase), where
+        // the caret can't show which syllable boundary it's really on. The
+        // updateCandidates([]) above already retired any previous message, so
+        // only a live tooltip needs re-emitting.
+        if (snap.tooltip) {
+          event.updateMessage(snap.tooltip, {
+            anchorAt: graphemeIndex(snap.composing, snap.cursor),
+          });
+        }
         break;
       }
       case "marking": {

@@ -373,6 +373,41 @@ describe("McBopomofoEngine MacishType wrapper", () => {
     expect(sharedEngine().snapshot()).toEqual({ kind: "empty" });
   });
 
+  // 大千 vu04 y94 → ㄒㄧㄢˋ ㄗㄞˋ (現在), whose candidates include the
+  // MACRO@TIME_NOW_SHORT expansion: two readings rendered as a clock string, so
+  // no caret position inside it can show which syllable the cursor is on.
+  test("the cursor-between-syllables tooltip surfaces as a message", () => {
+    compose(engine, ["v", "u", "0", "4", "y", "9", "4"]);
+    const opened = makeEvent({ key: "ArrowDown", code: "ArrowDown" });
+    press(engine, opened);
+    const candidates = opened.last("updateCandidates")?.args[0] as {
+      candidate: string;
+    }[];
+    const macroIndex = candidates.findIndex((each) => /\d/.test(each.candidate));
+    expect(macroIndex).toBeGreaterThanOrEqual(0);
+    confirmCandidate(
+      engine,
+      makeEvent({
+        candidate: candidates[macroIndex].candidate,
+        absoluteIndex: macroIndex,
+      })
+    );
+
+    // Cursor lands between the two readings: tooltip on.
+    const left = makeEvent({ key: "ArrowLeft", code: "ArrowLeft" });
+    press(engine, left);
+    expect(left.last("updateMessage")?.args[0]).toBe(
+      "游標正在 ㄒㄧㄢˋ 與 ㄗㄞˋ 之間"
+    );
+
+    // Cursor leaves the node: the updateCandidates([]) that every inputting
+    // update emits is what retires the message, so no updateMessage follows.
+    const left2 = makeEvent({ key: "ArrowLeft", code: "ArrowLeft" });
+    press(engine, left2);
+    expect(left2.last("updateCandidates")?.args[0]).toEqual([]);
+    expect(left2.last("updateMessage")).toBeUndefined();
+  });
+
   // Shift+Left from 大千 hk4 g4 (ㄘㄜˋ ㄕˋ → 測試) marks the last syllable: one
   // reading, below the two-syllable minimum, so the status text is fixed
   // whatever the dictionaries hold.
@@ -399,6 +434,17 @@ describe("McBopomofoEngine MacishType wrapper", () => {
       "updateMarkedText",
       "updateMessage",
     ]);
+  });
+
+  test("leaving Marking retires the status message", () => {
+    markLastSyllable(engine);
+    const escape = makeEvent({ key: "Escape", code: "Escape" });
+    press(engine, escape);
+    expect(sharedEngine().snapshot().kind).toBe("inputting");
+    // updateCandidates([]) is the only thing that retires a message: the
+    // wrapper never calls updateMessage("").
+    expect(escape.last("updateCandidates")?.args[0]).toEqual([]);
+    expect(escape.last("updateMessage")).toBeUndefined();
   });
 
   test("Marking Enter saves through the facade, not the host commit path", () => {
