@@ -77,6 +77,39 @@ describe("MacishMcBopomofo smoke test", () => {
     }
   });
 
+  test("phraseOpMessage explains each phrase-op outcome, in the engine's language", () => {
+    const engine = new MacishMcBopomofo({ languageCode: "zh-TW" });
+    // Marking is add-only and the mark is already emphasized in the buffer, so
+    // its acceptable case names no phrase; the candidate-window prompts do,
+    // because the message replaces the list the phrase came from.
+    expect(engine.phraseOpMessage("mark", "測試", "ok")).toBe("按下 Enter 加入詞彙");
+    expect(engine.phraseOpMessage("add", "測試", "ok")).toBe("增加「測試」的權重  ↵");
+    expect(engine.phraseOpMessage("exclude", "測試", "ok")).toBe("排除「測試」  ↵");
+    // "exists" is the one status whose wording depends on the operation.
+    expect(engine.phraseOpMessage("mark", "測試", "exists")).toBe("詞彙已存在");
+    expect(engine.phraseOpMessage("add", "測試", "exists")).toBe("詞彙已存在");
+    expect(engine.phraseOpMessage("exclude", "測試", "exists")).toBe("詞彙已排除");
+    // The bounds quote the same thresholds checkPhraseStatus applies.
+    expect(engine.phraseOpMessage("add", "測試", "tooShort")).toBe("最少需要 2 字元");
+    expect(engine.phraseOpMessage("add", "測試", "tooLong")).toBe("最多只能 8 字元");
+
+    engine.setLanguageCode("en");
+    expect(engine.phraseOpMessage("mark", "測試", "ok")).toBe(
+      "press Enter to add the phrase",
+    );
+    expect(engine.phraseOpMessage("add", "測試", "ok")).toBe('Boost "測試"  ↵');
+    expect(engine.phraseOpMessage("exclude", "測試", "ok")).toBe('Exclude "測試"  ↵');
+    expect(engine.phraseOpMessage("exclude", "測試", "exists")).toBe(
+      "phrase already excluded",
+    );
+    expect(engine.phraseOpMessage("add", "測試", "tooShort")).toBe(
+      "2 syllables required",
+    );
+    expect(engine.phraseOpMessage("add", "測試", "tooLong")).toBe(
+      "8 syllables maximum",
+    );
+  });
+
   test("cancelChoosing returns to inputting without committing", () => {
     const engine = new MacishMcBopomofo({ keyboardLayout: "Standard" });
     engine.pushKey(Key.asciiKey("s"));

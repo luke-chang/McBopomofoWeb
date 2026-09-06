@@ -392,7 +392,7 @@ describe("McBopomofoEngine MacishType wrapper", () => {
 
   test("the Marking status line is a message, not a one-item candidate list", () => {
     const mark = markLastSyllable(engine);
-    expect(mark.last("updateMessage")?.args[0]).toBe("需 2 字以上");
+    expect(mark.last("updateMessage")?.args[0]).toBe("最少需要 2 字元");
     // Anchored on the mark, and emitted after the marked text it indexes into.
     expect(mark.last("updateMessage")?.args[1]).toMatchObject({ anchorAt: 1 });
     expect(mark.calls.map((each) => each.name)).toEqual([
@@ -426,7 +426,7 @@ describe("McBopomofoEngine MacishType wrapper", () => {
 
   test("the + / - confirmation is a message; Escape restores the candidate list", () => {
     const { roomIndex, reading, plus } = pressPlusOnRoom(engine);
-    expect(plus.last("updateMessage")?.args[0]).toBe("加入「室內」  ↵");
+    expect(plus.last("updateMessage")?.args[0]).toBe("增加「室內」的權重  ↵");
     expect(plus.last("updateCandidates")).toBeUndefined();
 
     const escape = makeEvent({ key: "Escape", code: "Escape" });

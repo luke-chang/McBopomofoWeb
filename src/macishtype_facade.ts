@@ -69,9 +69,8 @@ export type Snapshot =
       // Emphasis range over `composing` (= head + markedText + tail).
       markStart: number;
       markEnd: number;
-      // Derived from KeyHandler's `acceptable` + reading-syllable count so the
-      // host can render its own short status text without parsing the
-      // localized tooltip.
+      // Derived from KeyHandler's `acceptable` + reading-syllable count, so a
+      // host can branch on the outcome; `phraseOpMessage` turns it into text.
       //   "ok"       → can be added
       //   "exists"   → already in the user dictionary
       //   "tooShort" → marked span < 2 syllables
@@ -95,6 +94,11 @@ export interface PushResult {
   committed: string;
   handled: boolean;
 }
+
+// KeyHandler's kMinValidMarkingReadingCount / kMaxValidMarkingReadingCount are
+// private; mirrored here for checkPhraseStatus and for the message explaining it.
+const kMinPhraseSyllables = 2;
+const kMaxPhraseSyllables = 8;
 
 function keyboardLayoutFor(name: KeyboardLayoutName): BopomofoKeyboardLayout {
   switch (name) {
@@ -122,13 +126,15 @@ function keyboardLayoutFor(name: KeyboardLayoutName): BopomofoKeyboardLayout {
 export class MacishMcBopomofo {
   private model: WebLanguageModel;
   private handler: KeyHandler;
+  // The same instance the KeyHandler holds, so `setLanguageCode` moves both.
+  private strings = new LocalizedStrings();
   private state: InputState = new Empty();
 
   constructor(opts: { keyboardLayout?: KeyboardLayoutName; languageCode?: string } = {}) {
     this.model = new WebLanguageModel(webData);
     // Resolves MACRO@ tokens (date / weekday / year / ...) at candidate lookup.
     this.model.setMacroConverter((input) => inputMacroController.handle(input));
-    this.handler = new KeyHandler(this.model, new LocalizedStrings());
+    this.handler = new KeyHandler(this.model, this.strings);
     this.handler.keyboardLayout = keyboardLayoutFor(opts.keyboardLayout ?? "Standard");
     // macOS-style: after typing a tone mark, pressing another tone replaces it
     // instead of starting a new syllable. Matches Apple TCIM behavior.
@@ -242,21 +248,54 @@ export class MacishMcBopomofo {
   }
 
   // Mirror of KeyHandler.buildMarkingState's validation (KeyHandler.ts:1620-1633):
-  // syllable-count bounds + dedup. Thresholds 2/8 are private constants in
-  // KeyHandler, hardcoded here too. `kind` picks which map dedup queries.
+  // syllable-count bounds + dedup. `kind` picks which map dedup queries.
   checkPhraseStatus(
     kind: "add" | "exclude",
     reading: string,
     value: string,
   ): "ok" | "exists" | "tooShort" | "tooLong" {
     const syllables = reading.split("-").length;
-    if (syllables < 2) return "tooShort";
-    if (syllables > 8) return "tooLong";
+    if (syllables < kMinPhraseSyllables) return "tooShort";
+    if (syllables > kMaxPhraseSyllables) return "tooLong";
     const map = kind === "add"
       ? this.model.getUserPhrases()
       : this.model.getExcludedPhrases();
     if (map.get(reading)?.includes(value)) return "exists";
     return "ok";
+  }
+
+  /**
+   * One-line text explaining a phrase operation, in the same language as every
+   * other McBopomofo string. `kind` is the flow: `mark` for the Marking status
+   * line (add-only, and the marked text is already emphasized in the composing
+   * buffer, so it goes unnamed), `add` / `exclude` for the candidate-window
+   * prompts, which do name the phrase because the message replaces the list it
+   * came from.
+   *
+   * `  ↵` is the only text not from LocalizedStrings: language-neutral, and it
+   * appears on exactly the status where Enter does something.
+   */
+  phraseOpMessage(
+    kind: "mark" | "add" | "exclude",
+    value: string,
+    status: "ok" | "exists" | "tooShort" | "tooLong",
+  ): string {
+    if (status === "tooShort") {
+      return this.strings.syllablesRequired(kMinPhraseSyllables);
+    }
+    if (status === "tooLong") {
+      return this.strings.syllableMaximum(kMaxPhraseSyllables);
+    }
+    if (status === "exists") {
+      return kind === "exclude"
+        ? this.strings.phraseAlreadyExcluded()
+        : this.strings.phraseAlreadyExists();
+    }
+    if (kind === "mark") return this.strings.pressEnterToAddThePhrase();
+    const label = kind === "add"
+      ? this.strings.boostPhrase(value)
+      : this.strings.excludePhrase(value);
+    return label + "  ↵";
   }
 
   cancelChoosing(): Snapshot {

@@ -13,22 +13,6 @@ function pickLanguageCode(): string {
   return "en";
 }
 
-// Shared by the Marking status message and the + / - confirmation message.
-// `kind` only affects ok / exists wording; length-limit text is shared.
-function formatPhraseOpMessage(
-  kind: "add" | "exclude",
-  value: string,
-  status: "ok" | "exists" | "tooShort" | "tooLong",
-): string {
-  const verb = kind === "add" ? "加入" : "排除";
-  switch (status) {
-    case "ok":       return `${verb}「${value}」  ↵`;
-    case "exists":   return `「${value}」已${kind === "add" ? "存在" : "排除"}`;
-    case "tooShort": return "需 2 字以上";
-    case "tooLong":  return "超過 8 字";
-  }
-}
-
 // These layouts print their symbols at fixed US-QWERTY positions, so
 // composition must follow the physical key (event.code), not the produced char
 // — otherwise a non-QWERTY OS layout (Dvorak etc.) breaks them. The
@@ -250,7 +234,7 @@ export default class McBopomofoEngine implements InputEngine {
             // pendingPhraseOp handler at the top of handleKey. Anchored where
             // _apply's choosing case put the window, so it doesn't jump.
             event.updateMessage(
-              formatPhraseOpMessage(opKind, c.value, status),
+              McBopomofoEngine.engine.phraseOpMessage(opKind, c.value, status),
               { anchorAt: graphemeIndex(snap.composing, snap.anchorOffset) },
             );
           }
@@ -511,7 +495,7 @@ export default class McBopomofoEngine implements InputEngine {
         // so arrows (extend / shrink the mark) and Enter (save) reach
         // handleKey untouched.
         event.updateMessage(
-          formatPhraseOpMessage("add", marked, snap.status),
+          McBopomofoEngine.engine.phraseOpMessage("mark", marked, snap.status),
           { anchorAt: graphemeIndex(snap.composing, snap.markStart) },
         );
         break;
