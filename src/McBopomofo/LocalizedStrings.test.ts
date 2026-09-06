@@ -75,13 +75,19 @@ describe("LocalizedStrings", () => {
     it("returns English minimum syllable text when languageCode is not zh-TW", () => {
       localizedStrings.languageCode = "en";
       const result = localizedStrings.syllablesRequired(5);
-      expect(result).toBe("5 syllables required.");
+      expect(result).toBe("5 syllables required");
     });
 
     it("describes zero syllable requirement in English", () => {
       localizedStrings.languageCode = "en";
       const result = localizedStrings.syllablesRequired(0);
-      expect(result).toBe("0 syllables required.");
+      expect(result).toBe("0 syllables required");
+    });
+
+    it("agrees in number for a single syllable", () => {
+      localizedStrings.languageCode = "en";
+      expect(localizedStrings.syllablesRequired(1)).toBe("1 syllable required");
+      expect(localizedStrings.syllableMaximum(1)).toBe("1 syllable maximum");
     });
   });
 
@@ -96,6 +102,34 @@ describe("LocalizedStrings", () => {
       localizedStrings.languageCode = "en";
       const result = localizedStrings.syllableMaximum(8);
       expect(result).toBe("8 syllables maximum");
+    });
+  });
+
+  describe("phraseAlreadyExcluded", () => {
+    it("shows zh-TW excluded phrase notice when languageCode is zh-TW", () => {
+      localizedStrings.languageCode = "zh-TW";
+      expect(localizedStrings.phraseAlreadyExcluded()).toBe("詞彙已排除");
+    });
+
+    it("shows English excluded phrase notice when languageCode is not zh-TW", () => {
+      localizedStrings.languageCode = "en";
+      expect(localizedStrings.phraseAlreadyExcluded()).toBe(
+        "phrase already excluded"
+      );
+    });
+  });
+
+  describe("boostPhrase / excludePhrase", () => {
+    it("names the phrase in zh-TW when languageCode is zh-TW", () => {
+      localizedStrings.languageCode = "zh-TW";
+      expect(localizedStrings.boostPhrase("測試")).toBe("增加「測試」的權重");
+      expect(localizedStrings.excludePhrase("測試")).toBe("排除「測試」");
+    });
+
+    it("names the phrase in English when languageCode is not zh-TW", () => {
+      localizedStrings.languageCode = "en";
+      expect(localizedStrings.boostPhrase("測試")).toBe('Boost "測試"');
+      expect(localizedStrings.excludePhrase("測試")).toBe('Exclude "測試"');
     });
   });
 

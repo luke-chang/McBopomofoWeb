@@ -5,6 +5,11 @@
  * SPDX-License-Identifier: MIT
  */
 
+// English needs the agreement; the Chinese strings are count-agnostic.
+function pluralSyllables(count: number): string {
+  return count === 1 ? " syllable" : " syllables";
+}
+
 export class LocalizedStrings {
   languageCode: string = "";
 
@@ -44,7 +49,7 @@ export class LocalizedStrings {
     if (this.languageCode === "zh-TW") {
       return "最少需要 " + count + " 字元";
     }
-    return count + " syllables required.";
+    return count + pluralSyllables(count) + " required";
   }
 
   /* istanbul ignore next */
@@ -52,7 +57,7 @@ export class LocalizedStrings {
     if (this.languageCode === "zh-TW") {
       return "最多只能 " + count + " 字元";
     }
-    return count + " syllables maximum";
+    return count + pluralSyllables(count) + " maximum";
   }
 
   /* istanbul ignore next */
@@ -61,6 +66,14 @@ export class LocalizedStrings {
       return "詞彙已存在";
     }
     return "phrase already exists";
+  }
+
+  /* istanbul ignore next */
+  phraseAlreadyExcluded() {
+    if (this.languageCode === "zh-TW") {
+      return "詞彙已排除";
+    }
+    return "phrase already excluded";
   }
 
   /* istanbul ignore next */
@@ -108,11 +121,30 @@ export class LocalizedStrings {
     return "Boost";
   }
 
+  /**
+   * `boost` with the phrase named — for one-line surfaces (a status strip, an
+   * inline prompt) too narrow for `boostTitle`'s full question.
+   */
+  boostPhrase(phrase: string): string {
+    if (this.languageCode === "zh-TW") {
+      return "增加「" + phrase + "」的權重";
+    }
+    return 'Boost "' + phrase + '"';
+  }
+
   exclude(): string {
     if (this.languageCode === "zh-TW") {
       return "排除這個詞彙";
     }
     return "Exclude";
+  }
+
+  /** `exclude` with the phrase named; see {@link boostPhrase}. */
+  excludePhrase(phrase: string): string {
+    if (this.languageCode === "zh-TW") {
+      return "排除「" + phrase + "」";
+    }
+    return 'Exclude "' + phrase + '"';
   }
 
   cancel(): string {
