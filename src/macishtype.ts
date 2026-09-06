@@ -273,6 +273,17 @@ export default class McBopomofoEngine implements InputEngine {
       return true;
     }
 
+    // `?` asks KeyHandler for the dictionary-lookup menu on the marked text —
+    // a state the facade doesn't model, so its snapshot would read as empty and
+    // _apply would resetContext, dropping the composition the user is still
+    // marking. Swallow it, same reasoning as the modifier combos above: no UI
+    // for the flow, so protect the buffer instead. KeyHandler swallows every
+    // other key in Marking anyway (KeyHandler.ts:897-899), so this only
+    // withholds the one key that would change state.
+    if (snap.kind === "marking" && event.key === "?") {
+      return true;
+    }
+
     // Native-style two-step Esc: with a partial bopomofo, let KeyHandler
     // clear just `reading_`; otherwise commit the walked prefix and dismiss.
     if (event.code === "Escape" && snap.kind === "inputting") {

@@ -447,6 +447,16 @@ describe("McBopomofoEngine MacishType wrapper", () => {
     expect(escape.last("updateMessage")).toBeUndefined();
   });
 
+  test("`?` while marking is swallowed, keeping the composition alive", () => {
+    markLastSyllable(engine);
+    // KeyHandler would turn this into a dictionary-lookup menu, which the
+    // facade reports as empty — _apply would then resetContext the buffer away.
+    const question = makeEvent({ key: "?", code: "Slash", shiftKey: true });
+    expect(press(engine, question)).toBe(true);
+    expect(question.calls).toEqual([]);
+    expect(sharedEngine().snapshot().kind).toBe("marking");
+  });
+
   test("Marking Enter saves through the facade, not the host commit path", () => {
     markLastSyllable(engine);
     const enter = makeEvent({ key: "Enter", code: "Enter" });
