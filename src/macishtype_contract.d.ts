@@ -53,25 +53,38 @@ export interface CandidateWindowState {
    */
   readonly handleNavigationKeys: boolean;
   /**
-   * When true, the host handles `indexLabels` keys while the window is
-   * visible — `handleKey` / `handleAssociatedKey` never see them.
-   * When false, the engine handles them.
+   * When true, the host handles the `indexLabels` keys that address a
+   * candidate while the window is visible — `handleKey` /
+   * `handleAssociatedKey` never see those. A label with no candidate
+   * behind it, on a page shorter than `pageSize`, is left to the engine.
+   * When false, the engine handles every label key.
    */
   readonly handleIndexLabelKeys: boolean;
   /**
    * When true (an associated-mode window under the Shift + number keys
    * policy), each digit label is selected with Shift + the physical key
    * that names it — main row `Digit1`…`Digit0` or keypad
-   * `Numpad1`…`Numpad0` — independent of keyboard layout. Non-digit
-   * labels keep plain character matching.
+   * `Numpad1`…`Numpad0` — independent of keyboard layout. A digit key
+   * selects nothing else; other labels keep plain character matching.
    */
   readonly indexLabelDigitsRequireShift: boolean;
   /**
-   * Maps a keystroke to its page-relative 0-based candidate position,
-   * or null when it selects nothing. Pair with `commitCandidateAtIndex`
+   * Half-open range `[pageStart, pageEnd)` of the full candidate list that
+   * the current index labels address, both `0` while no window is visible.
+   * `pageStart` plus a page-relative index is the `absoluteIndex` that
+   * selecting it reports, and `pageEnd - pageStart` is how many of the
+   * page's slots actually hold a candidate.
+   */
+  readonly pageStart: number;
+  readonly pageEnd: number;
+  /**
+   * Maps a keystroke to its page-relative 0-based label position, or null
+   * when it matches no label. It answers where the label sits, not
+   * whether that slot holds a candidate — compare against
+   * `pageEnd - pageStart` for that. Pair with `commitCandidateAtIndex`
    * to commit by index label. Passing the key event applies the host's
-   * full rule — Option-modified keys never select, and digit labels
-   * require Shift + a physical digit key under
+   * full rule — a key with `ctrlKey`, `altKey`, or `metaKey` set never
+   * selects, and digit labels require Shift + a physical digit key under
    * `indexLabelDigitsRequireShift`; a bare character matches by produced
    * character, so digit labels never match through the string form while
    * the requirement is on.
@@ -82,7 +95,12 @@ export interface CandidateWindowState {
    * to pass straight to `navigateCandidates`, or null if the event
    * isn't a nav key. Same mapping the host uses internally — for
    * engines that opt out of `handleNavigationKeys` and want to emit
-   * the action themselves without reimplementing the keyCode table.
+   * the action themselves without reimplementing the keyCode table. Nav
+   * keys are recognized by `key`, or by `code` when `key` is empty or
+   * `"Unidentified"`. A key with `ctrlKey`, `altKey`, or `metaKey` set
+   * never navigates. Tab and Shift+Tab answer null on a host whose
+   * candidate window gives Tab an action of its own instead of moving the
+   * highlight.
    *
    * @example
    *   const intent = event.candidateWindow.navigationIntent(event);
@@ -116,7 +134,8 @@ export type CandidateInput = string | Candidate;
  * clusters), NOT UTF-16 code units. Plain `str.length` / `str[i]` is
  * UTF-16-indexed and mis-aligns on surrogate pairs and ZWJ sequences;
  * use `Intl.Segmenter` with `granularity: "grapheme"` to align with
- * the host's character count.
+ * the host's character count. Both ends are clamped into
+ * `0...text.length` as the host applies them.
  *
  * @example
  *   const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -134,7 +153,7 @@ export interface MarkedTextOptions {
   /**
    * Caret position within the text. Omitted means "default to end-of-text".
    * `0` is distinct from omission — it explicitly places the caret at the
-   * start.
+   * start. Clamped into `0...text.length` as the host applies it.
    */
   cursor?: number;
   /**
@@ -150,7 +169,7 @@ export interface MarkedTextOptions {
 export interface CandidateUpdateOptions {
   /**
    * Cursor position in `markedText` where the candidate window's left
-   * edge anchors. Range `0...markedText.length` — `0` = before the
+   * edge anchors. Clamped into `0...markedText.length` — `0` = before the
    * first character, `length` = after the last. Grapheme clusters,
    * not UTF-16. Resolved against the marked text as the host applies
    * this update; rewrites that land later leave the anchor in place.
@@ -192,13 +211,22 @@ export interface NavigationOptions {
 export interface MessageOptions {
   /** Cursor position in `markedText` the message anchors to. Same as `CandidateUpdateOptions`. */
   anchorAt?: number;
+  /**
+   * Milliseconds the message stays up before the host retires it as an empty
+   * `updateMessage` would. Zero or negative keeps it up. Whatever takes the
+   * message down first cancels this, and every `updateMessage` starts anew.
+   */
+  duration?: number;
 }
 
 /**
  * Mutator surface attached to every event object. Calls queue actions
  * that the host applies only after the engine method returns; reading
  * `event.markedText` or other context fields after a mutator call still
- * returns the snapshot from method entry, not the queued value.
+ * returns the snapshot from method entry, not the queued value. Mutators
+ * act only during the method call that received the event, including
+ * promise jobs that run before control returns to the host; calls through
+ * the event after that have no effect.
  */
 export interface EventMutators {
   /** Replace the composing (marked) text shown in the active text field. */
@@ -206,9 +234,11 @@ export interface EventMutators {
   /**
    * Replace the candidate list shown in the candidate window. Pass an
    * empty array to hide the window, clearing a message along with it.
-   * Declare candidates alongside a non-empty `markedText`: on macOS the
-   * window anchors to the composition, and some clients deliver keys to
-   * the input method only while a composition is active.
+   * Keep a short composition alive under the window: it makes the input
+   * method the owner of the keyboard and lets a click elsewhere dismiss
+   * the window. Candidates declared with no marked text are still shown
+   * at the caret, but some clients then withhold or duplicate non-text
+   * keys, and only a focus change or the engine dismisses the window.
    */
   updateCandidates(items: readonly CandidateInput[], options?: CandidateUpdateOptions): void;
   /**
@@ -217,7 +247,9 @@ export interface EventMutators {
    * no key (every key reaches the engine), cannot be clicked or
    * committed, and leaves `candidateWindow.isVisible` false. Its
    * appearance is the host's decision, hence no layout options.
-   * `updateCandidates` replaces it, as does the end of the composition.
+   * `updateCandidates` replaces it, as does the end of the composition, and
+   * a `duration` retires it on its own; shown with no marked text it
+   * otherwise stays until a focus change or an empty string from the engine.
    */
   updateMessage(text: string, options?: MessageOptions): void;
   /** Engine-driven commit. Triggers `candidateConfirmed` if defined. */
@@ -246,7 +278,7 @@ export interface EventMutators {
    */
   flushStaged(append?: string): void;
   /**
-   * Enter associated mode: `heldChar` (which may be more than one
+   * Enter associated mode: `heldChar` (non-empty; it may be more than one
    * character) becomes staged marked text, replacing any previously staged
    * text — fold `event.stagedText` in to carry it forward. `candidates`
    * appear as suggested follow-ups. Picking a candidate commits `heldChar`
@@ -262,14 +294,29 @@ export interface EventMutators {
    * Whenever the resolved list comes out empty — an explicit `[]`, a
    * dictionary miss, or the opt-in absent — the host commits `heldChar` and
    * ends the composition. Chained engines lean on this to finish a chain.
+   * An empty `heldChar` takes the same exit: the composition ends with
+   * nothing committed and any `candidates` supplied are dropped with a
+   * notice — the held text is what keeps the composition, and with it the
+   * keyboard, under the follow-ups.
    */
   enterAssociatedMode(heldChar: string, candidates?: readonly string[]): void;
+  /**
+   * Play the desktop's alert sound — a short cue for rejected input. At
+   * most one sound per event, and requests arriving faster than the host
+   * can play them may collapse further. The user can turn alert sounds
+   * off, so never depend on it being heard.
+   */
+  beep(): void;
 }
 
 /** Context fields shared by every event payload. */
 export interface EventContext {
   readonly markedText: string;
   readonly stagedText: string;
+  /**
+   * Whether marked text is non-empty. Independent of
+   * `candidateWindow.isVisible`: a window can be up with no composition.
+   */
   readonly isComposing: boolean;
   readonly isAssociating: boolean;
   /** Text of the message currently shown via `updateMessage`, null when none. */
@@ -296,8 +343,15 @@ export interface KeyEvent extends EventContext, EventMutators {
    * `"ArrowLeft"` / `"Backspace"` / `" "` for Space, etc.). Falls back to
    * `"Unidentified"` for unknown keys with no character output.
    *
-   * Use `key` when you want the *character the user actually typed*. Use
-   * `code` when you want the *physical key position*.
+   * Use `key` when you want the *character the user actually typed*, and to
+   * recognize named keys, so that remapped keys and the keypad's keys with
+   * NumLock off count as the keys they name. Use `code` when you want the
+   * *physical key position*.
+   *
+   * The case is the platform's own, and platforms disagree on Caps Lock
+   * combined with Shift. An engine that emits a letter directly takes the
+   * letter from `key` and derives the case from `shiftKey` and
+   * `getModifierState("CapsLock")`.
    */
   readonly key: string;
   /**
@@ -313,12 +367,15 @@ export interface KeyEvent extends EventContext, EventMutators {
    * Mac's physical Clear key on the numpad reports `code: "NumLock"` per
    * the W3C UI Events spec — Clear sits where NumLock lives on PC keyboards.
    *
+   * With NumLock off, keypad keys keep their `"Numpad*"` code while `key`
+   * names the key they stand for.
+   *
    * Recommended handling ("Numeric keypad keys" in the README): keypad
-   * character keys (`"Numpad*"` except `"NumpadEnter"`) never enter the
-   * composition — swallow while composing, pass through when idle.
-   * NumpadEnter behaves like Return (match `key === "Enter"`, which covers
-   * both); Clear behaves like Escape while composing (match
-   * `key === "Clear"` — its code is `"NumLock"`).
+   * character keys (a `"Numpad*"` code with a one-character `key`) never
+   * enter the composition — swallow while composing, pass through when
+   * idle. NumpadEnter behaves like Return (match `key === "Enter"`, which
+   * covers both); Clear behaves like Escape while composing (match
+   * `key === "Clear"` — its code is `"NumLock"` or `"Numpad5"`).
    *
    * Format examples: `"KeyA"` / `"Digit1"` / `"Space"` / `"Enter"` /
    * `"ArrowLeft"` / `"ShiftLeft"` / `"Numpad0"` / `"F1"`.
@@ -353,9 +410,10 @@ export interface KeyEvent extends EventContext, EventMutators {
    * Query an individual modifier or lock state.
    *
    * Live states: `"Shift"` / `"Control"` / `"Alt"` / `"Meta"` (same as the
-   * boolean `*Key` properties above), `"CapsLock"`, and `"NumLock"` — that
-   * last one host-dependent, as in browsers: `false` on macOS, live on
-   * fcitx5 only where the frontend forwards Mod2.
+   * boolean `*Key` properties above), `"CapsLock"`, plus `"NumLock"` and
+   * `"AltGraph"` — those last two host-dependent, as in browsers: `false`
+   * on macOS, live on fcitx5 (NumLock only where the frontend forwards
+   * Mod2).
    *
    * Every other web-spec string returns `false` on both hosts. A key can
    * still arrive while its state reads `false`, so detect those with `code`.
@@ -364,7 +422,8 @@ export interface KeyEvent extends EventContext, EventMutators {
   getModifierState(key: string): boolean;
   /**
    * Host extension (not part of the web KeyboardEvent spec). The layout-aware
-   * character with Option / Command / Control stripped; Shift is preserved.
+   * character with Option / Command / Control stripped; Shift and Caps Lock
+   * are preserved, so its case is the one this key would type without Option.
    *
    * Useful on macOS where Option doubles as a dead-key modifier and rewrites
    * `key` (Option+a → `"å"` on US, `"π"` on Dvorak via the layout's Option
@@ -407,9 +466,11 @@ export interface ConfirmEvent extends EventContext, EventMutators {
 
 /**
  * Contract for an engine module's default export. Every method is optional;
- * the host calls only those that exist on the instance. The class is
- * instantiated once per text-field session, so per-field state can live
- * on `this`.
+ * the host calls only those that exist on the instance. The host keeps one
+ * instance per input context across that context's sessions (each one from
+ * `activate()` to `deactivate()`), and the platform decides what an input
+ * context covers; an engine reload or an engine switch can replace the
+ * instance.
  */
 export interface InputEngine {
   /** Per-session setup. Fires when the user focuses a text field. */
@@ -434,8 +495,9 @@ export interface InputEngine {
   /**
    * Called in associated mode for keys that the candidate window didn't
    * handle (keys outside its scope, in-scope keys when
-   * `handleNavigationKeys` / `handleIndexLabelKeys` is off, and Enter
-   * while nothing is highlighted).
+   * `handleNavigationKeys` / `handleIndexLabelKeys` is off, index labels
+   * with no candidate behind them, and Enter while nothing is
+   * highlighted).
    *
    * Return `true` to mark the key consumed; queued mutators apply.
    * Returning `false` / `undefined` (including omitting the method) makes
@@ -494,9 +556,11 @@ export interface InputEngineConstructor {
    * All input codes that produce `character` in this engine. Called only
    * when the manifest declares `capabilities.reverseLookup: true`.
    *
-   * `character` is a single user-perceived character (grapheme cluster);
-   * its `.length` can exceed 1 (surrogate pairs, combining marks), so
-   * don't assume `length === 1`. Return `[]` when it has no codes.
+   * `character` is a single user-perceived character (grapheme cluster),
+   * exactly as it appears in the text; its `.length` can exceed 1
+   * (surrogate pairs, combining marks), so don't assume `length === 1`.
+   * The recommended convention is to match it code point for code point.
+   * Return `[]` when it has no codes.
    */
   reverseLookup?(character: string): (string | ReverseCode)[];
   /**
@@ -558,8 +622,8 @@ export interface ToggleChangeEvent {
  * and shared with the IME menu's checkmarks.
  *
  * Unlike `manifest.candidateWindow`, writes act immediately — the very
- * next commit reflects them. Undeclared keys read `undefined`; writes
- * to them are logged and ignored.
+ * next commit reflects them. Undeclared keys read `undefined` (inherited
+ * `Object.prototype` members aside); writes to them are logged and ignored.
  */
 export interface Menu {
   [key: string]: boolean | undefined;
@@ -573,8 +637,8 @@ export interface Menu {
  * toggle exists on a given host.
  *
  * Writes act immediately and persist host-side, shared with the IME
- * menu's checkmark. Unavailable keys read `undefined`; writes to them
- * are logged and ignored.
+ * menu's checkmark. Unavailable keys read `undefined` (inherited
+ * `Object.prototype` members aside); writes to them are logged and ignored.
  */
 export interface Toggle {
   /** Traditional→Simplified commit transform. */
@@ -583,11 +647,16 @@ export interface Toggle {
 
 /**
  * Live candidate-window configuration. Reads return engine writes (if
- * any), else manifest declarations, else `undefined`. Writes take effect
+ * any), else manifest declarations, else `undefined` (inherited
+ * `Object.prototype` members aside). Writes take effect
  * at the next session activate.
  *
  * Invalid writes — wrong type, out of range, unknown field — are logged
  * and silently ignored; engine execution continues.
+ *
+ * Holds the top-level `candidateWindow` fields only. Per-implementation
+ * fields are applied by the host at load and are not exposed here:
+ * reading one yields `undefined`, writing one is logged and ignored.
  *
  * Not the same as `event.candidateWindow` (per-event snapshot of the
  * effective state).
@@ -597,11 +666,6 @@ export interface CandidateWindow {
   fontSize?: number;
   indexLabels?: string;
   pageSize?: number;
-  widerExpandedColumns?: boolean;
-  moveOnExpand?: boolean;
-  horizontalMaxVisibleRows?: number;
-  verticalMinVisibleRows?: number;
-  expandable?: boolean;
   /**
    * Host policy: when true (default), standard nav keys (arrows / Tab /
    * Page / Home / End) and Enter are intercepted by the host while the
@@ -611,18 +675,20 @@ export interface CandidateWindow {
    */
   handleNavigationKeys?: boolean;
   /**
-   * Host policy: when true (default), `indexLabels` keys are
-   * intercepted by the host while the candidate window is visible.
-   * Set to false to route them to the engine (`handleKey` in normal
-   * mode, `handleAssociatedKey` in associated mode).
+   * Host policy: when true (default), the `indexLabels` keys that address
+   * a candidate are intercepted by the host while the candidate window is
+   * visible; a label with nothing behind it goes to the engine either
+   * way. Set to false to route every label key to the engine
+   * (`handleKey` in normal mode, `handleAssociatedKey` in associated
+   * mode).
    */
   handleIndexLabelKeys?: boolean;
   /**
    * When true, each digit label is selected with Shift + the physical
-   * key that names it — main row or keypad; non-digit labels keep plain
-   * character matching. How the requirement is presented to the user is
-   * host-specific. The same field the host's associated-mode policy
-   * sets on its own windows.
+   * key that names it — main row or keypad — and a digit key selects
+   * nothing else; other labels keep plain character matching. How the
+   * requirement is presented to the user is host-specific. The same
+   * field the host's associated-mode policy sets on its own windows.
    */
   indexLabelDigitsRequireShift?: boolean;
   /**
@@ -641,7 +707,7 @@ export interface CandidateWindow {
 }
 
 /** A frozen, read-only host-provided table. `query(key)` returns the value
- *  mapped to `key`. */
+ *  mapped to `key`, matched code point for code point. */
 export interface LookupModule<V> {
   query(key: string): V;
 }
@@ -711,8 +777,10 @@ export interface Manifest {
  * `console` is provided by the host runtime (bridging to the
  * platform's logging facility). Levels:
  * `log`/`info`/`trace` → info, `debug` → debug, `warn` → notice,
- * `error` → error. `warn`/`error`/`trace` automatically append a caller
- * stack trace.
+ * `error` → error. `trace` appends a caller stack trace, and so do
+ * `warn`/`error` unless an `Error` argument already prints its own frames.
+ * Arguments are joined with spaces; see `engines/README.md` for how each
+ * kind of value prints.
  */
 declare global {
   interface Console {
@@ -723,9 +791,7 @@ declare global {
     error(...args: unknown[]): void;
     trace(...args: unknown[]): void;
   }
-  // eslint-disable-next-line no-var
   var console: Console;
-  // eslint-disable-next-line no-var
   var manifest: Manifest;
 
   /** Web Storage `Storage` minus property access. */
@@ -743,7 +809,6 @@ declare global {
    * key > 200 bytes, or value > 10 MB. Filesystem errors log + return
    * safe defaults (null / no-op).
    */
-  // eslint-disable-next-line no-var
   var localStorage: Storage;
 
   /**
@@ -861,7 +926,6 @@ declare global {
     readonly type: "fontcoveragechange";
   }
 
-  // eslint-disable-next-line no-var
   var navigator: Navigator;
 
   /**
@@ -873,21 +937,21 @@ declare global {
    * `arrayBuffer()` synchronously marks the body as consumed, so a
    * second body method call rejects immediately with `Error("Body has
    * already been consumed")`. Recoverable failures (UTF-8 decode fail,
-   * disk read fail, ArrayBuffer alloc fail) un-mark so the engine can
-   * fall back or retry.
+   * disk read fail, failure to build the string or ArrayBuffer) un-mark
+   * so the engine can fall back or retry.
    */
   interface FetchResponse {
-    /** Always `true` — non-2xx is not modeled (file reads either succeed or `fetch()` rejects). */
+    /** Always `true` — non-2xx is not modeled (a file that cannot be reached rejects `fetch()` or the body method instead). */
     readonly ok: boolean;
     /** Always `200`. Present for web parity, not meaningful here. */
     readonly status: number;
     /** Synthetic `engine:///<path>` URL (e.g. `"engine:///dict.json"`). */
     readonly url: string;
-    /** UTF-8 decode of file contents. Rejects with `Error("Body is not valid UTF-8")` if decode fails. */
+    /** UTF-8 decode of file contents, a leading BOM dropped. Rejects with `Error("Body is not valid UTF-8")` if decode fails, and with an `Error` if the file cannot be read or the string cannot be built. */
     text(): Promise<string>;
     /** Equivalent to `text().then(JSON.parse)`. Rejects with `SyntaxError` on malformed JSON. */
     json(): Promise<unknown>;
-    /** Raw file bytes. */
+    /** Raw file bytes, a leading BOM included. Rejects with an `Error` if the file cannot be read or the `ArrayBuffer` cannot be built. */
     arrayBuffer(): Promise<ArrayBuffer>;
   }
 
@@ -909,12 +973,13 @@ declare global {
    * resolving with `ok: false` for these errors.
    *
    * Fetched files are tracked alongside imports — modifying one outside
-   * the engine (e.g. the user editing the file in a text editor)
-   * triggers a module reload. Kick off fetches at module top level so
-   * they begin on engine load and store the result into a module-scoped
-   * variable via `.then(...)`; class methods read via closure. Fetching
-   * inside `activate()` or the class constructor would re-read on every
-   * text-field focus.
+   * the engine, or a path whose fetch failed coming to resolve to a
+   * regular file inside the engine folder, triggers a module reload. Kick
+   * off fetches at module top level so they begin on engine load and
+   * store the result into a module-scoped variable via `.then(...)`;
+   * class methods read via closure. Fetching inside `activate()` re-reads
+   * on every focus, and inside the class constructor once per input
+   * context.
    *
    * @param init Web-fetch init bag — accepted for signature parity with
    *   the Web fetch API but **completely ignored**. Headers, method,
@@ -949,7 +1014,6 @@ declare global {
    * `"unicode-1-1-utf-8"`, …); any other label throws `RangeError`, since
    * no other encoding is implemented yet.
    */
-  // eslint-disable-next-line no-var
   var TextDecoder: {
     prototype: TextDecoder;
     new (label?: string, options?: { fatal?: boolean; ignoreBOM?: boolean }): TextDecoder;
@@ -962,7 +1026,6 @@ declare global {
     encode(input?: string): Uint8Array;
   }
 
-  // eslint-disable-next-line no-var
   var TextEncoder: {
     prototype: TextEncoder;
     new (): TextEncoder;
