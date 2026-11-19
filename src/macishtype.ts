@@ -172,11 +172,30 @@ export default class McBopomofoEngine implements InputEngine {
       return snap.kind !== "empty";
     }
 
+    // An index label on a page shorter than pageSize has no candidate behind
+    // it, so the host forwards the key instead of selecting nothing. The user
+    // meant to pick a slot: reject it rather than commit the highlight or let
+    // the key reach the app. Checked before Caps Lock, so a label the host
+    // forwarded keeps meaning "pick a slot" while the window is up.
+    if (snap.kind === "choosing" && this._isEmptyIndexLabel(event)) {
+      event.beep();
+      return true;
+    }
+
+    // Caps Lock suspends Bopomofo, as McBopomofo does on macOS: a printable
+    // key ends the composition and reaches the app as typed. Named keys
+    // (Backspace, Enter, arrows, Esc) keep working on the composition.
+    if (event.key.length === 1 && event.getModifierState("CapsLock")) {
+      if (snap.kind !== "empty") this._endComposition(event);
+      return false;
+    }
+
     if (snap.kind === "choosing") {
-      // Host owns nav keys, Enter, and index-label keys while the candidate
-      // window is visible (handleNavigationKeys / handleIndexLabelKeys default
-      // to true): they route through the host's navigate / commit path and
-      // surface as our candidateSelectionChanged / candidateConfirmed callbacks.
+      // Host owns nav keys, Enter, and index-label keys with a candidate
+      // behind them while the candidate window is visible
+      // (handleNavigationKeys / handleIndexLabelKeys default to true): they
+      // route through the host's navigate / commit path and surface as our
+      // candidateSelectionChanged / candidateConfirmed callbacks.
       const punctMode = snap.mode === "punctuation";
       // Digit not in indexLabels (so the host didn't intercept it): swallow in
       // the symbol menu, pass through otherwise. Must precede the deferred-key
@@ -380,6 +399,27 @@ export default class McBopomofoEngine implements InputEngine {
         end: graphemeIndex(text, options.emphasis.end),
       },
     });
+  }
+
+  // candidateIndex says where the key sits among the labels, not whether that
+  // slot holds a candidate; pageEnd - pageStart is how many slots do.
+  private _isEmptyIndexLabel(event: KeyEvent): boolean {
+    const candidateWindow = event.candidateWindow;
+    if (!candidateWindow.isVisible) return false;
+    const slot = candidateWindow.candidateIndex(event);
+    return (
+      slot !== null &&
+      slot >= candidateWindow.pageEnd - candidateWindow.pageStart
+    );
+  }
+
+  // End the composition the way a click elsewhere does: commit the staged
+  // text (_apply keeps a trailing partial reading out of it), then drop the
+  // rest — marked text, candidate window, message — and the facade's state.
+  private _endComposition(event: KeyEvent): void {
+    event.flushStaged();
+    event.resetContext();
+    this.compositionEnded();
   }
 
   // Save the marked phrase (push Return). If the facade stays in Marking —

@@ -87,6 +87,7 @@ function makeEvent(props: Partial<KeyEvent & ConfirmEvent> = {}): FakeEvent {
     resetContext: record("resetContext"),
     flushStaged: record("flushStaged"),
     enterAssociatedMode: record("enterAssociatedMode"),
+    beep: record("beep"),
     calls,
     last(name: string) {
       for (let i = calls.length - 1; i >= 0; i--) {
@@ -505,6 +506,131 @@ describe("McBopomofoEngine MacishType wrapper", () => {
     expect(sharedEngine().checkPhraseStatus("add", reading, "室內")).toBe("exists");
     expect(enter.last("updateCandidates")?.args[1]).toMatchObject({
       initialHighlight: roomIndex,
+    });
+  });
+
+  // 大千 s u 3 → ㄋㄧˇ, then Space opens its candidate list.
+  function openCandidatesForNi(target: InstanceType<EngineModule["default"]>): void {
+    compose(target, ["s", "u", "3"]);
+    press(target, makeEvent({ key: " ", code: "Space" }));
+    expect(sharedEngine().snapshot().kind).toBe("choosing");
+  }
+
+  // A visible window on a short page: three candidates under nine labels.
+  // `slot` is where the host places the key among the labels, null for none.
+  function shortPage(slot: number | null): Partial<KeyEvent> {
+    return {
+      candidateWindow: {
+        isVisible: true,
+        pageStart: 9,
+        pageEnd: 12,
+        candidateIndex: () => slot,
+      } as unknown as KeyEvent["candidateWindow"],
+    };
+  }
+
+  describe("an index label with no candidate behind it", () => {
+    test("a digit label beeps and keeps the candidate window", () => {
+      openCandidatesForNi(engine);
+      const five = makeEvent({ key: "5", code: "Digit5", ...shortPage(4) });
+      expect(press(engine, five)).toBe(true);
+      expect(five.calls.map((call) => call.name)).toEqual(["beep"]);
+      expect(sharedEngine().snapshot().kind).toBe("choosing");
+    });
+
+    test("a letter label beeps instead of committing the highlighted candidate", () => {
+      openCandidatesForNi(engine);
+      const k = makeEvent({ key: "k", code: "KeyK", ...shortPage(7) });
+      expect(press(engine, k)).toBe(true);
+      expect(k.calls.map((call) => call.name)).toEqual(["beep"]);
+      expect(sharedEngine().snapshot().kind).toBe("choosing");
+    });
+
+    test("a key that is no label still commits the highlight to start a syllable", () => {
+      openCandidatesForNi(engine);
+      const q = makeEvent({ key: "q", code: "KeyQ", ...shortPage(null) });
+      expect(press(engine, q)).toBe(true);
+      expect(q.last("commitSelectedCandidate")).toBeDefined();
+      expect(q.last("beep")).toBeUndefined();
+    });
+  });
+
+  // Caps Lock suspends Bopomofo, as McBopomofo does on macOS: a printable key
+  // ends the composition and reaches the app as typed.
+  describe("Caps Lock", () => {
+    // The case is the platform's own; shiftKey stays false.
+    function capsLock(
+      key: string,
+      code: string,
+      props: Partial<KeyEvent> = {},
+    ): FakeEvent {
+      return makeEvent({
+        key,
+        code,
+        getModifierState: (state: string) => state === "CapsLock",
+        ...props,
+      });
+    }
+
+    test.each(["Standard", "ETen"])(
+      "%s passes a letter straight to the app when idle",
+      (layout) => {
+        setLayout(layout);
+        const a = capsLock("A", "KeyA");
+        expect(press(engine, a)).toBe(false);
+        expect(a.calls).toEqual([]);
+        expect(sharedEngine().snapshot()).toEqual({ kind: "empty" });
+      },
+    );
+
+    test("a digit composition key passes through too", () => {
+      // 大千 '1' is ㄅ; Caps Lock suspends every composition key, not just letters.
+      const one = capsLock("1", "Digit1");
+      expect(press(engine, one)).toBe(false);
+      expect(sharedEngine().snapshot()).toEqual({ kind: "empty" });
+    });
+
+    test("a letter commits the staged text and ends the composition", () => {
+      // 你 walked, ㄆ still a partial reading — kept out of staged by _apply.
+      const last = compose(engine, ["s", "u", "3", "q"]);
+      expect(last.last("updateMarkedText")?.args[1]).toMatchObject({ staged: 1 });
+
+      const a = capsLock("A", "KeyA");
+      expect(press(engine, a)).toBe(false);
+      expect(a.calls).toEqual([
+        { name: "flushStaged", args: [] },
+        { name: "resetContext", args: [] },
+      ]);
+      expect(sharedEngine().snapshot()).toEqual({ kind: "empty" });
+    });
+
+    test("a letter while choosing ends the composition and its window", () => {
+      openCandidatesForNi(engine);
+      const a = capsLock("A", "KeyA", shortPage(null));
+      expect(press(engine, a)).toBe(false);
+      expect(a.calls.map((call) => call.name)).toEqual([
+        "flushStaged",
+        "resetContext",
+      ]);
+      expect(sharedEngine().snapshot()).toEqual({ kind: "empty" });
+    });
+
+    test("an index label with no candidate still beeps", () => {
+      openCandidatesForNi(engine);
+      const five = capsLock("5", "Digit5", shortPage(4));
+      expect(press(engine, five)).toBe(true);
+      expect(five.calls.map((call) => call.name)).toEqual(["beep"]);
+      expect(sharedEngine().snapshot().kind).toBe("choosing");
+    });
+
+    test("Backspace still edits the composition", () => {
+      compose(engine, ["s", "u", "3", "q"]);
+      const backspace = capsLock("Backspace", "Backspace");
+      expect(press(engine, backspace)).toBe(true);
+      expect(backspace.last("flushStaged")).toBeUndefined();
+      const snap = sharedEngine().snapshot();
+      expect(snap.kind).toBe("inputting");
+      expect(snap.readingLength).toBe(0);
     });
   });
 });
